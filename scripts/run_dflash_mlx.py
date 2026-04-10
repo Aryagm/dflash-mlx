@@ -13,6 +13,7 @@ import mlx.nn as nn
 from huggingface_hub import snapshot_download
 from mlx_lm import load
 from mlx_lm.generate import wired_limit
+from mlx_lm.utils import quantize_model
 from mlx_lm.models import cache as cache_lib
 from mlx_lm.models import qwen3_5
 from mlx_lm.models.base import scaled_dot_product_attention
@@ -23,6 +24,14 @@ from mlx_lm.models.gated_delta import (
 )
 from mlx_lm.models.qwen3 import MLP
 from mlx_lm.models.rope_utils import initialize_rope
+
+from benchmark_history import (
+    DEFAULT_HISTORY_PATH,
+    append_rows,
+    prompt_sha256,
+    run_metadata,
+)
+from prepare_custom_mlx_model import prepare_custom_model
 
 
 @dataclass
@@ -321,7 +330,17 @@ def parse_args() -> argparse.Namespace:
         default="parallel-replay",
     )
     parser.add_argument("--verify-chunk-size", type=int, default=4)
+    parser.add_argument("--draft-quant-bits", type=int, default=None)
+    parser.add_argument("--draft-quant-group-size", type=int, default=64)
     parser.add_argument("--print-output", action="store_true")
+    parser.add_argument(
+        "--history-file",
+        type=Path,
+        default=DEFAULT_HISTORY_PATH,
+        help="CSV file that accumulates benchmark history.",
+    )
+    parser.add_argument("--no-history", action="store_true", help="Do not append this run to the benchmark history CSV.")
+    parser.add_argument("--experiment-tag", type=str, default="", help="Optional label for grouping benchmark runs.")
     return parser.parse_args()
 
 
@@ -330,6 +349,18 @@ def resolve_model_path(path_or_repo: str) -> Path:
     if path.exists():
         return path
     return Path(snapshot_download(path_or_repo))
+
+
+def resolve_target_model_path(path_or_repo: str) -> Path:
+    model_path = resolve_model_path(path_or_repo)
+    config = json.loads((model_path / "config.json").read_text())
+    if (
+        config.get("model_type") == "qwen3_5"
+        and config.get("model_file") != "custom_qwen35_dflash_model.py"
+    ):
+        source_id = path_or_repo if not Path(path_or_repo).exists() else str(model_path)
+        return prepare_custom_model(source_id)
+    return model_path
 
 
 def load_draft_model(path_or_repo: str) -> tuple[DFlashDraftModel, Path]:
@@ -345,6 +376,23 @@ def load_draft_model(path_or_repo: str) -> tuple[DFlashDraftModel, Path]:
     draft.load_weights(weights)
     mx.eval(draft.parameters())
     return draft, model_path
+
+
+def maybe_quantize_draft_model(
+    draft: DFlashDraftModel,
+    bits: int | None,
+    group_size: int,
+) -> dict[str, Any] | None:
+    if bits is None:
+        return None
+    _, quantized_config = quantize_model(
+        model=draft,
+        config={},
+        group_size=group_size,
+        bits=bits,
+    )
+    mx.eval(draft.parameters())
+    return quantized_config.get("quantization")
 
 
 def build_prompt(tokenizer, prompt_text: str) -> mx.array:
@@ -424,7 +472,7 @@ def forward_linear_layer_with_rollback_record(
 
     state = cache[1] if cache is not None else None
     if state is not None:
-        initial_state = mx.array(state)
+        initial_state = state
     else:
         initial_state = mx.zeros(
             (batch_size, linear.num_v_heads, linear.head_v_dim, linear.head_k_dim),
@@ -473,15 +521,15 @@ def forward_linear_layer_with_rollback_record(
     hidden_states = residual + layer.mlp(hidden_states)
 
     repeat_factor = linear.num_v_heads // linear.num_k_heads
-    rollback_keys = mx.repeat(keys, repeat_factor, axis=2) if repeat_factor > 1 else keys
     rollback_record = {
-        "initial_conv_state": mx.array(initial_conv_state),
+        "initial_conv_state": initial_conv_state,
         "initial_state": initial_state,
-        "qkv": mx.array(qkv),
-        "k": mx.array(rollback_keys),
-        "v": mx.array(values),
-        "g": mx.array(g),
-        "beta": mx.array(beta),
+        "qkv": qkv,
+        "k": keys,
+        "v": values,
+        "g": g,
+        "beta": beta,
+        "repeat_factor": repeat_factor,
     }
     return hidden_states, rollback_record
 
@@ -493,6 +541,14 @@ def forward_target_with_hidden_states(
     layer_ids: list[int],
     return_rollback_records: bool = False,
 ) -> tuple[mx.array, mx.array] | tuple[mx.array, mx.array, dict[int, dict[str, mx.array]]]:
+    if hasattr(model, "forward_dflash"):
+        return model.forward_dflash(
+            inputs=inputs,
+            cache=cache,
+            layer_ids=layer_ids,
+            return_rollback_records=return_rollback_records,
+        )
+
     language_model = model.language_model
     text_model = language_model.model
 
@@ -544,7 +600,13 @@ def advance_target_cache(
     return hidden_states
 
 
-def snapshot_linear_caches(cache: list[Any]) -> dict[int, list[mx.array | None]]:
+def snapshot_linear_caches(
+    target,
+    cache: list[Any],
+) -> dict[int, list[mx.array | None]]:
+    if hasattr(target, "snapshot_linear_caches"):
+        return target.snapshot_linear_caches(cache)
+
     snapshots: dict[int, list[mx.array | None]] = {}
     for idx, layer_cache in enumerate(cache):
         if isinstance(layer_cache, cache_lib.ArraysCache):
@@ -555,9 +617,14 @@ def snapshot_linear_caches(cache: list[Any]) -> dict[int, list[mx.array | None]]
 
 
 def restore_linear_caches(
+    target,
     cache: list[Any],
     snapshots: dict[int, list[mx.array | None]],
 ) -> None:
+    if hasattr(target, "restore_linear_caches"):
+        target.restore_linear_caches(cache, snapshots)
+        return
+
     for idx, values in snapshots.items():
         layer_cache = cache[idx]
         layer_cache.cache = [
@@ -655,10 +722,15 @@ def advance_gated_delta_states(
 
 
 def rollback_linear_caches_from_records(
+    target,
     cache: list[Any],
     rollback_records: dict[int, dict[str, mx.array]],
     accepted_inputs: int,
 ) -> None:
+    if hasattr(target, "rollback_linear_caches"):
+        target.rollback_linear_caches(cache, rollback_records, accepted_inputs)
+        return
+
     layer_indices: list[int] = []
     initial_states: list[mx.array] = []
     keys: list[mx.array] = []
@@ -678,7 +750,11 @@ def rollback_linear_caches_from_records(
         layer_cache[0] = conv_prefix[:, -n_keep:, :]
         layer_indices.append(idx)
         initial_states.append(record["initial_state"])
-        keys.append(record["k"][:, :accepted_inputs])
+        record_keys = record["k"][:, :accepted_inputs]
+        repeat_factor = int(record["repeat_factor"])
+        if repeat_factor > 1:
+            record_keys = mx.repeat(record_keys, repeat_factor, axis=2)
+        keys.append(record_keys)
         values.append(record["v"][:, :accepted_inputs])
         gs.append(record["g"][:, :accepted_inputs])
         betas.append(record["beta"][:, :accepted_inputs])
@@ -686,15 +762,30 @@ def rollback_linear_caches_from_records(
     if not layer_indices:
         return
 
-    rebuilt_states = advance_gated_delta_states(
-        initial_states=mx.concatenate(initial_states, axis=0),
-        keys=mx.concatenate(keys, axis=0),
-        values=mx.concatenate(values, axis=0),
-        g=mx.concatenate(gs, axis=0),
-        beta=mx.concatenate(betas, axis=0),
-    )
-    for offset, idx in enumerate(layer_indices):
-        cache[idx][1] = rebuilt_states[offset : offset + 1]
+        rebuilt_states = advance_gated_delta_states(
+            initial_states=mx.concatenate(initial_states, axis=0),
+            keys=mx.concatenate(keys, axis=0),
+            values=mx.concatenate(values, axis=0),
+            g=mx.concatenate(gs, axis=0),
+            beta=mx.concatenate(betas, axis=0),
+        )
+        for offset, idx in enumerate(layer_indices):
+            cache[idx][1] = rebuilt_states[offset : offset + 1]
+
+
+def flatten_rollback_tensors(rollback_records: Any) -> list[mx.array]:
+    if isinstance(rollback_records, dict) and "layer_indices" in rollback_records:
+        return [
+            tensor
+            for key, tensor in rollback_records.items()
+            if hasattr(tensor, "shape") and hasattr(tensor, "dtype")
+        ]
+    return [
+        tensor
+        for record in rollback_records.values()
+        for key, tensor in record.items()
+        if key != "repeat_factor"
+    ]
 
 
 def verify_block_stream(
@@ -740,20 +831,19 @@ def verify_block_parallel_replay(
         layer_ids,
         return_rollback_records=True,
     )
-    rollback_tensors = [
-        tensor
-        for record in rollback_records.values()
-        for tensor in record.values()
-    ]
-    mx.eval(verifier_logits, verifier_hidden, *rollback_tensors)
+    mx.eval(verifier_logits, verifier_hidden)
 
     posterior = sample_tokens(verifier_logits, temperature)[0].tolist()
     matched = longest_prefix_match(block_tokens[1:], posterior[:-1])
     accepted_inputs = matched + 1
 
     if accepted_inputs < draft_block_size:
+        rollback_tensors = flatten_rollback_tensors(rollback_records)
+        if rollback_tensors:
+            mx.eval(*rollback_tensors)
         rewind_target_kv_caches(target_cache, draft_block_size - accepted_inputs)
         rollback_linear_caches_from_records(
+            target,
             target_cache,
             rollback_records,
             accepted_inputs,
@@ -777,7 +867,7 @@ def verify_block_chunked(
     while cursor < draft_block_size:
         chunk_end = min(cursor + verify_chunk_size, draft_block_size)
         chunk_tokens = block_tokens[cursor:chunk_end]
-        linear_snapshots = snapshot_linear_caches(target_cache)
+        linear_snapshots = snapshot_linear_caches(target, target_cache)
 
         chunk_logits, chunk_hidden = forward_target_with_hidden_states(
             target,
@@ -806,7 +896,7 @@ def verify_block_chunked(
 
         accepted_local_inputs = local_matches + 1
         rewind_target_kv_caches(target_cache, len(chunk_tokens))
-        restore_linear_caches(target_cache, linear_snapshots)
+        restore_linear_caches(target, target_cache, linear_snapshots)
         replay_hidden = forward_target_with_hidden_states(
             target,
             mx.array(chunk_tokens[:accepted_local_inputs], dtype=mx.uint32)[None],
@@ -952,10 +1042,16 @@ def main() -> None:
     mx.random.seed(args.seed)
     prompt_text = args.prompt_file.read_text()
 
-    print(f"[load target] {args.target_model}")
-    target, tokenizer = load(args.target_model)
+    resolved_target_model = resolve_target_model_path(args.target_model)
+    print(f"[load target] {resolved_target_model}")
+    target, tokenizer = load(str(resolved_target_model))
     print(f"[load draft] {args.draft_model}")
     draft, draft_path = load_draft_model(args.draft_model)
+    draft_quantization = maybe_quantize_draft_model(
+        draft,
+        bits=args.draft_quant_bits,
+        group_size=args.draft_quant_group_size,
+    )
     prompt_tokens = build_prompt(tokenizer, prompt_text)
     stop_token_ids = set(tokenizer.eos_token_ids)
 
@@ -1001,8 +1097,13 @@ def main() -> None:
     output_text = tokenizer.decode(generated_tokens, skip_special_tokens=False)
 
     print("\n" + "=" * 60)
-    print(f"Target model:             {args.target_model}")
+    print(f"Target model:             {resolved_target_model}")
     print(f"Draft model:              {draft_path}")
+    if draft_quantization is not None:
+        print(
+            "Draft quantization:       "
+            f"{draft_quantization.get('bits')}bit g{draft_quantization.get('group_size')}"
+        )
     print(f"Speculative tokens:       {metrics['speculative_tokens']}")
     print(f"Verify mode:              {args.verify_mode}")
     if args.verify_mode == "chunked":
@@ -1019,6 +1120,32 @@ def main() -> None:
     print(f"Acceptance lengths:       {metrics['acceptance_lengths']}")
     print(f"Peak memory:              {metrics['peak_memory_gb']:.2f} GB")
     print("=" * 60)
+
+    if not args.no_history:
+        history_row = {
+            **run_metadata("run_dflash_mlx.py", experiment_tag=args.experiment_tag),
+            "record_type": "run",
+            "target_model": args.target_model,
+            "resolved_target_model": resolved_target_model,
+            "draft_model": args.draft_model,
+            "resolved_draft_path": draft_path,
+            "draft_quant_bits": args.draft_quant_bits,
+            "draft_quant_group_size": (
+                args.draft_quant_group_size if args.draft_quant_bits is not None else ""
+            ),
+            "prompt_file": args.prompt_file,
+            "prompt_sha256": prompt_sha256(prompt_text),
+            "max_new_tokens": args.max_new_tokens,
+            "temperature": args.temperature,
+            "seed": args.seed,
+            "warmup_runs": args.warmup_runs,
+            "verify_mode": args.verify_mode,
+            "verify_chunk_size": args.verify_chunk_size,
+            "speculative_tokens_arg": args.speculative_tokens,
+            **metrics,
+        }
+        append_rows(args.history_file, [history_row])
+        print(f"[history] appended 1 row to {args.history_file}")
 
     if args.print_output:
         print(output_text)

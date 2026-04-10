@@ -16,6 +16,13 @@ from mlx_lm import load
 from mlx_lm.generate import stream_generate
 from mlx_lm.sample_utils import make_sampler
 
+from benchmark_history import (
+    DEFAULT_HISTORY_PATH,
+    append_rows,
+    prompt_sha256,
+    run_metadata,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR = REPO_ROOT / "cache"
@@ -184,7 +191,7 @@ def run_one_prompt(model, tokenizer, prompt_tokens: list[int], args: argparse.Na
     )
 
 
-def summarize(results: list[PromptResult]) -> None:
+def summarize(results: list[PromptResult]) -> dict[str, float]:
     if not results:
         raise ValueError("No benchmark results to summarize.")
 
@@ -210,6 +217,18 @@ def summarize(results: list[PromptResult]) -> None:
     print(f"Mean wall time:           {mean(r.wall_time_s for r in results):.2f}s")
     print(f"Peak memory (max):        {max(r.peak_memory_gb for r in results):.2f} GB")
     print("=" * 60)
+    return {
+        "aggregate_prompt_tps": aggregate_prompt_tps,
+        "aggregate_generation_tps": aggregate_generation_tps,
+        "end_to_end_output_tps": end_to_end_output_tps,
+        "mean_prompt_tps": mean(r.prompt_tps for r in results),
+        "mean_generation_tps": mean(r.generation_tps for r in results),
+        "mean_wall_time_s": mean(r.wall_time_s for r in results),
+        "peak_memory_gb_max": max(r.peak_memory_gb for r in results),
+        "total_prompt_tokens": total_prompt_tokens,
+        "total_output_tokens": total_output_tokens,
+        "prompt_count": len(results),
+    }
 
 
 def parse_args() -> argparse.Namespace:
@@ -235,6 +254,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0, help="Random seed used for prompt shuffling.")
     parser.add_argument("--shuffle", action="store_true", help="Shuffle prompts before warmup/benchmark.")
     parser.add_argument("--print-output", action="store_true", help="Print the generated output for each measured prompt.")
+    parser.add_argument(
+        "--history-file",
+        type=Path,
+        default=DEFAULT_HISTORY_PATH,
+        help="CSV file that accumulates benchmark history.",
+    )
+    parser.add_argument("--no-history", action="store_true", help="Do not append this run to the benchmark history CSV.")
+    parser.add_argument("--experiment-tag", type=str, default="", help="Optional label for grouping benchmark runs.")
     return parser.parse_args()
 
 
@@ -249,6 +276,14 @@ def main() -> None:
     warmup = min(args.warmup_prompts, len(prompts) if args.prompt is None and args.prompt_file is None else 0)
     warmup_prompts = prompts[:warmup]
     benchmark_prompts = prompts[warmup:] if warmup else prompts
+    history_meta = run_metadata("benchmark_mlx.py", experiment_tag=args.experiment_tag)
+    prompt_source = (
+        "prompt"
+        if args.prompt is not None
+        else "prompt_file"
+        if args.prompt_file is not None
+        else "dataset"
+    )
 
     if not benchmark_prompts:
         raise ValueError("No prompts left to benchmark after warmup.")
@@ -264,10 +299,42 @@ def main() -> None:
         mx.clear_cache()
 
     results: list[PromptResult] = []
+    benchmark_rows: list[dict[str, object]] = []
     for index, prompt in enumerate(benchmark_prompts, start=1):
         prompt_tokens = build_prompt_tokens(tokenizer, prompt, args.enable_thinking)
         result = run_one_prompt(model, tokenizer, prompt_tokens, args)
         results.append(result)
+        benchmark_rows.append(
+            {
+                **history_meta,
+                "record_type": "prompt",
+                "record_index": index,
+                "model": args.model,
+                "dataset": args.dataset,
+                "prompt_source": prompt_source,
+                "prompt_file": args.prompt_file,
+                "prompt_sha256": prompt_sha256(prompt),
+                "num_prompts_requested": args.num_prompts,
+                "warmup_prompts": warmup,
+                "max_new_tokens": args.max_new_tokens,
+                "temperature": args.temperature,
+                "top_p": args.top_p,
+                "top_k": args.top_k,
+                "min_p": args.min_p,
+                "min_tokens_to_keep": args.min_tokens_to_keep,
+                "enable_thinking": args.enable_thinking,
+                "shuffle": args.shuffle,
+                "seed": args.seed,
+                "prompt_tokens": result.prompt_tokens,
+                "generated_tokens": result.output_tokens,
+                "prompt_tps": result.prompt_tps,
+                "generation_tps": result.generation_tps,
+                "end_to_end_tps": result.output_tokens / max(result.wall_time_s, 1e-9),
+                "wall_time_s": result.wall_time_s,
+                "peak_memory_gb": result.peak_memory_gb,
+                "finish_reason": result.finish_reason,
+            }
+        )
         print(
             f"[run {index}/{len(benchmark_prompts)}] "
             f"prompt={result.prompt_tokens} out={result.output_tokens} "
@@ -279,7 +346,38 @@ def main() -> None:
             print(result.output_text)
         mx.clear_cache()
 
-    summarize(results)
+    aggregate = summarize(results)
+    if not args.no_history:
+        benchmark_rows.append(
+            {
+                **history_meta,
+                "record_type": "aggregate",
+                "record_index": "",
+                "model": args.model,
+                "dataset": args.dataset,
+                "prompt_source": prompt_source,
+                "prompt_file": args.prompt_file,
+                "prompt_sha256": (
+                    prompt_sha256(benchmark_prompts[0])
+                    if len(benchmark_prompts) == 1
+                    else ""
+                ),
+                "num_prompts_requested": args.num_prompts,
+                "warmup_prompts": warmup,
+                "max_new_tokens": args.max_new_tokens,
+                "temperature": args.temperature,
+                "top_p": args.top_p,
+                "top_k": args.top_k,
+                "min_p": args.min_p,
+                "min_tokens_to_keep": args.min_tokens_to_keep,
+                "enable_thinking": args.enable_thinking,
+                "shuffle": args.shuffle,
+                "seed": args.seed,
+                **aggregate,
+            }
+        )
+        append_rows(args.history_file, benchmark_rows)
+        print(f"[history] appended {len(benchmark_rows)} row(s) to {args.history_file}")
 
 
 if __name__ == "__main__":
