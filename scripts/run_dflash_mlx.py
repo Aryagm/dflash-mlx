@@ -16,6 +16,10 @@ from mlx_lm.generate import wired_limit
 from mlx_lm.models import cache as cache_lib
 from mlx_lm.models import qwen3_5
 from mlx_lm.models.base import scaled_dot_product_attention
+from mlx_lm.models.gated_delta import (
+    compute_g,
+    gated_delta_update,
+)
 from mlx_lm.models.qwen3 import MLP
 from mlx_lm.models.rope_utils import initialize_rope
 
@@ -299,12 +303,109 @@ def lm_head_logits(model, hidden_states: mx.array) -> mx.array:
     return language_model.lm_head(hidden_states)
 
 
+def forward_linear_layer_with_rollback_record(
+    layer,
+    hidden_states: mx.array,
+    mask: mx.array | None,
+    cache: cache_lib.ArraysCache | None,
+) -> tuple[mx.array, dict[str, mx.array]]:
+    linear = layer.linear_attn
+    residual = hidden_states
+    inputs = layer.input_layernorm(hidden_states)
+    batch_size, seq_len, _ = inputs.shape
+
+    qkv = linear.in_proj_qkv(inputs)
+    z = linear.in_proj_z(inputs).reshape(
+        batch_size,
+        seq_len,
+        linear.num_v_heads,
+        linear.head_v_dim,
+    )
+    b = linear.in_proj_b(inputs)
+    a = linear.in_proj_a(inputs)
+
+    if cache is not None and cache[0] is not None:
+        initial_conv_state = cache[0]
+    else:
+        initial_conv_state = mx.zeros(
+            (batch_size, linear.conv_kernel_size - 1, linear.conv_dim),
+            dtype=inputs.dtype,
+        )
+
+    if mask is not None:
+        qkv = mx.where(mask[..., None], qkv, 0)
+    conv_input = mx.concatenate([initial_conv_state, qkv], axis=1)
+    if cache is not None:
+        cache[0] = conv_input[:, -(linear.conv_kernel_size - 1) :]
+    conv_out = nn.silu(linear.conv1d(conv_input))
+
+    queries, keys, values = [
+        tensor.reshape(batch_size, seq_len, num_heads, head_dim)
+        for tensor, num_heads, head_dim in zip(
+            mx.split(conv_out, [linear.key_dim, 2 * linear.key_dim], -1),
+            [linear.num_k_heads, linear.num_k_heads, linear.num_v_heads],
+            [linear.head_k_dim, linear.head_k_dim, linear.head_v_dim],
+        )
+    ]
+
+    state = cache[1] if cache is not None else None
+    if state is not None:
+        initial_state = mx.array(state)
+    else:
+        initial_state = mx.zeros(
+            (batch_size, linear.num_v_heads, linear.head_v_dim, linear.head_k_dim),
+            dtype=inputs.dtype,
+        )
+    inv_scale = keys.shape[-1] ** -0.5
+    queries = (inv_scale**2) * mx.fast.rms_norm(queries, None, 1e-6)
+    keys = inv_scale * mx.fast.rms_norm(keys, None, 1e-6)
+    beta = mx.sigmoid(b)
+    g = compute_g(linear.A_log, a, linear.dt_bias)
+
+    out, state = gated_delta_update(
+        q=queries,
+        k=keys,
+        v=values,
+        a=a,
+        b=b,
+        A_log=linear.A_log,
+        dt_bias=linear.dt_bias,
+        state=state,
+        mask=mask,
+        use_kernel=not linear.training,
+    )
+
+    if cache is not None:
+        cache[1] = state
+
+    out = linear.norm(out, z)
+    out = linear.out_proj(out.reshape(batch_size, seq_len, -1))
+    hidden_states = residual + out
+    residual = hidden_states
+    hidden_states = layer.post_attention_layernorm(hidden_states)
+    hidden_states = residual + layer.mlp(hidden_states)
+
+    repeat_factor = linear.num_v_heads // linear.num_k_heads
+    rollback_keys = mx.repeat(keys, repeat_factor, axis=2) if repeat_factor > 1 else keys
+    rollback_record = {
+        "initial_conv_state": mx.array(initial_conv_state),
+        "initial_state": initial_state,
+        "qkv": mx.array(qkv),
+        "k": mx.array(rollback_keys),
+        "v": mx.array(values),
+        "g": mx.array(g),
+        "beta": mx.array(beta),
+    }
+    return hidden_states, rollback_record
+
+
 def forward_target_with_hidden_states(
     model,
     inputs: mx.array,
     cache: list[Any],
     layer_ids: list[int],
-) -> tuple[mx.array, mx.array]:
+    return_rollback_records: bool = False,
+) -> tuple[mx.array, mx.array] | tuple[mx.array, mx.array, dict[int, dict[str, mx.array]]]:
     language_model = model.language_model
     text_model = language_model.model
 
@@ -314,14 +415,26 @@ def forward_target_with_hidden_states(
 
     selected_hidden_states: list[mx.array] = []
     target_layer_ids = set(layer_ids)
+    rollback_records: dict[int, dict[str, mx.array]] = {}
     for idx, (layer, layer_cache) in enumerate(zip(text_model.layers, cache)):
         mask = ssm_mask if layer.is_linear else fa_mask
-        hidden_states = layer(hidden_states, mask=mask, cache=layer_cache)
+        if return_rollback_records and layer.is_linear:
+            hidden_states, rollback_record = forward_linear_layer_with_rollback_record(
+                layer,
+                hidden_states,
+                mask,
+                layer_cache,
+            )
+            rollback_records[idx] = rollback_record
+        else:
+            hidden_states = layer(hidden_states, mask=mask, cache=layer_cache)
         if idx in target_layer_ids:
             selected_hidden_states.append(hidden_states)
 
     logits = lm_head_logits(model, text_model.norm(hidden_states))
     target_hidden = mx.concatenate(selected_hidden_states, axis=-1)
+    if return_rollback_records:
+        return logits, target_hidden, rollback_records
     return logits, target_hidden
 
 
@@ -409,6 +522,54 @@ def cache_summary(cache: list[Any]) -> str:
     return " ".join(parts)
 
 
+def advance_gated_delta_state_step(
+    state: mx.array,
+    k: mx.array,
+    v: mx.array,
+    g: mx.array,
+    beta: mx.array,
+) -> mx.array:
+    state_f = state.astype(mx.float32)
+    k_f = k.astype(mx.float32)
+    v_f = v.astype(mx.float32)
+    g_f = g.astype(mx.float32)
+    beta_f = beta.astype(mx.float32)
+
+    state_f = state_f * g_f[..., None, None]
+    kv_mem = mx.sum(state_f * k_f[..., None, :], axis=-1)
+    delta = (v_f - kv_mem) * beta_f[..., None]
+    state_f = state_f + delta[..., None] * k_f[..., None, :]
+    return state_f.astype(state.dtype)
+
+
+def rollback_linear_caches_from_records(
+    cache: list[Any],
+    rollback_records: dict[int, dict[str, mx.array]],
+    accepted_inputs: int,
+) -> None:
+    for idx, record in rollback_records.items():
+        layer_cache = cache[idx]
+        initial_conv_state = record["initial_conv_state"]
+        qkv = record["qkv"]
+        n_keep = initial_conv_state.shape[1]
+        conv_prefix = mx.concatenate(
+            [initial_conv_state, qkv[:, :accepted_inputs, :]],
+            axis=1,
+        )
+        layer_cache[0] = conv_prefix[:, -n_keep:, :]
+
+        state = record["initial_state"]
+        for token_idx in range(accepted_inputs):
+            state = advance_gated_delta_state_step(
+                state=state,
+                k=record["k"][:, token_idx],
+                v=record["v"][:, token_idx],
+                g=record["g"][:, token_idx],
+                beta=record["beta"][:, token_idx],
+            )
+        layer_cache[1] = state
+
+
 def verify_block_stream(
     target,
     target_cache: list[Any],
@@ -445,12 +606,12 @@ def verify_block_parallel_replay(
     temperature: float,
     layer_ids: list[int],
 ) -> tuple[int, int, mx.array]:
-    linear_snapshots = snapshot_linear_caches(target_cache)
-    verifier_logits, verifier_hidden = forward_target_with_hidden_states(
+    verifier_logits, verifier_hidden, rollback_records = forward_target_with_hidden_states(
         target,
         mx.array(block_tokens, dtype=mx.uint32)[None],
         target_cache,
         layer_ids,
+        return_rollback_records=True,
     )
     mx.eval(verifier_logits, verifier_hidden)
 
@@ -459,14 +620,12 @@ def verify_block_parallel_replay(
     accepted_inputs = matched + 1
 
     if accepted_inputs < draft_block_size:
-        rewind_target_kv_caches(target_cache, draft_block_size)
-        restore_linear_caches(target_cache, linear_snapshots)
-        replay_states = advance_target_cache(
-            target,
-            mx.array(block_tokens[:accepted_inputs], dtype=mx.uint32)[None],
+        rewind_target_kv_caches(target_cache, draft_block_size - accepted_inputs)
+        rollback_linear_caches_from_records(
             target_cache,
+            rollback_records,
+            accepted_inputs,
         )
-        mx.eval(replay_states)
 
     return accepted_inputs, posterior[matched], verifier_hidden[:, :accepted_inputs, :]
 
