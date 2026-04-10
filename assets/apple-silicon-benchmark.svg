@@ -1,0 +1,85 @@
+<svg width="960" height="560" viewBox="0 0 960 560" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="560" rx="24" fill="#0B1020"/>
+  <rect x="24" y="24" width="912" height="512" rx="20" fill="#11182B"/>
+  <text x="48" y="72" fill="#F8FAFC" font-size="28" font-weight="700" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    Exact Local Qwen3.5-4B on Apple Silicon
+  </text>
+  <text x="48" y="102" fill="#94A3B8" font-size="16" font-weight="500" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    Current measured throughput on this Mac. Higher is better.
+  </text>
+
+  <rect x="48" y="130" width="396" height="360" rx="16" fill="#0F172A"/>
+  <rect x="516" y="130" width="396" height="360" rx="16" fill="#0F172A"/>
+
+  <text x="72" y="168" fill="#E2E8F0" font-size="20" font-weight="700" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    Generation TPS
+  </text>
+  <text x="540" y="168" fill="#E2E8F0" font-size="20" font-weight="700" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    End-to-End TPS
+  </text>
+
+  <g stroke="#23314E" stroke-width="1">
+    <line x1="168" y1="210" x2="420" y2="210"/>
+    <line x1="168" y1="275" x2="420" y2="275"/>
+    <line x1="168" y1="340" x2="420" y2="340"/>
+    <line x1="168" y1="405" x2="420" y2="405"/>
+    <line x1="636" y1="210" x2="888" y2="210"/>
+    <line x1="636" y1="275" x2="888" y2="275"/>
+    <line x1="636" y1="340" x2="888" y2="340"/>
+    <line x1="636" y1="405" x2="888" y2="405"/>
+  </g>
+
+  <g fill="#64748B" font-size="13" font-weight="600" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="168" y="192">0</text>
+    <text x="292" y="192">90</text>
+    <text x="404" y="192">180</text>
+    <text x="636" y="192">0</text>
+    <text x="760" y="192">90</text>
+    <text x="872" y="192">180</text>
+  </g>
+
+  <g font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <text x="72" y="235" fill="#CBD5E1" font-size="15" font-weight="600">Plain MLX BF16</text>
+    <rect x="168" y="218" width="57" height="22" rx="11" fill="#475569"/>
+    <text x="234" y="234" fill="#E2E8F0" font-size="14" font-weight="700">40.6</text>
+
+    <text x="72" y="300" fill="#CBD5E1" font-size="15" font-weight="600">DFlash MLX BF16</text>
+    <rect x="168" y="283" width="141" height="22" rx="11" fill="#F59E0B"/>
+    <text x="318" y="299" fill="#FDE68A" font-size="14" font-weight="700">100.5</text>
+
+    <text x="72" y="365" fill="#CBD5E1" font-size="15" font-weight="600">Plain MLX 4-bit</text>
+    <rect x="168" y="348" width="167" height="22" rx="11" fill="#14B8A6"/>
+    <text x="344" y="364" fill="#99F6E4" font-size="14" font-weight="700">119.4</text>
+
+    <text x="72" y="430" fill="#F8FAFC" font-size="15" font-weight="700">DFlash MLX 4-bit</text>
+    <rect x="168" y="413" width="227" height="22" rx="11" fill="#38BDF8"/>
+    <text x="404" y="429" fill="#BAE6FD" font-size="14" font-weight="800">161.9</text>
+
+    <text x="540" y="235" fill="#CBD5E1" font-size="15" font-weight="600">Plain MLX BF16</text>
+    <rect x="636" y="218" width="53" height="22" rx="11" fill="#475569"/>
+    <text x="698" y="234" fill="#E2E8F0" font-size="14" font-weight="700">37.6</text>
+
+    <text x="540" y="300" fill="#CBD5E1" font-size="15" font-weight="600">DFlash MLX BF16</text>
+    <rect x="636" y="283" width="129" height="22" rx="11" fill="#F59E0B"/>
+    <text x="774" y="299" fill="#FDE68A" font-size="14" font-weight="700">92.3</text>
+
+    <text x="540" y="365" fill="#CBD5E1" font-size="15" font-weight="600">Plain MLX 4-bit</text>
+    <rect x="636" y="348" width="138" height="22" rx="11" fill="#14B8A6"/>
+    <text x="783" y="364" fill="#99F6E4" font-size="14" font-weight="700">98.8</text>
+
+    <text x="540" y="430" fill="#F8FAFC" font-size="15" font-weight="700">DFlash MLX 4-bit</text>
+    <rect x="636" y="413" width="197" height="22" rx="11" fill="#38BDF8"/>
+    <text x="842" y="429" fill="#BAE6FD" font-size="14" font-weight="800">140.7</text>
+  </g>
+
+  <rect x="48" y="504" width="864" height="20" rx="10" fill="#0B1020"/>
+  <text x="68" y="518" fill="#E2E8F0" font-size="14" font-weight="700" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    1.36x faster than plain MLX 4-bit
+  </text>
+  <text x="280" y="518" fill="#64748B" font-size="14" font-weight="600" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    2.47x faster than plain MLX BF16
+  </text>
+  <text x="572" y="518" fill="#64748B" font-size="14" font-weight="600" font-family="ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    Qwen3.5-4B + z-lab/Qwen3.5-4B-DFlash
+  </text>
+</svg>

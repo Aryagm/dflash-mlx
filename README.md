@@ -13,6 +13,8 @@ On this Mac, that path is the **best exact local result we have measured** for t
 - `161.9 tok/s` generation
 - `140.7 tok/s` end-to-end
 
+![Apple Silicon benchmark chart](assets/apple-silicon-benchmark.svg)
+
 ## Why This Fork Exists
 
 Upstream DFlash is built around CUDA-first serving and research workflows. This fork adds a **local Apple Silicon runtime** that makes DFlash usable on Mac without treating MLX as an afterthought.
