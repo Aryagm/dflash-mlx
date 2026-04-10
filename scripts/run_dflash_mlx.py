@@ -18,7 +18,8 @@ from mlx_lm.models import qwen3_5
 from mlx_lm.models.base import scaled_dot_product_attention
 from mlx_lm.models.gated_delta import (
     compute_g,
-    gated_delta_update,
+    gated_delta_kernel,
+    gated_delta_ops,
 )
 from mlx_lm.models.qwen3 import MLP
 from mlx_lm.models.rope_utils import initialize_rope
@@ -309,6 +310,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--warmup-runs", type=int, default=0)
     parser.add_argument(
+        "--speculative-tokens",
+        type=int,
+        default=None,
+        help="Number of draft tokens to verify per step. Defaults to the draft model block size.",
+    )
+    parser.add_argument(
         "--verify-mode",
         choices=["stream", "chunked", "parallel-replay"],
         default="parallel-replay",
@@ -429,18 +436,31 @@ def forward_linear_layer_with_rollback_record(
     beta = mx.sigmoid(b)
     g = compute_g(linear.A_log, a, linear.dt_bias)
 
-    out, state = gated_delta_update(
-        q=queries,
-        k=keys,
-        v=values,
-        a=a,
-        b=b,
-        A_log=linear.A_log,
-        dt_bias=linear.dt_bias,
-        state=state,
-        mask=mask,
-        use_kernel=not linear.training,
+    use_kernel = (
+        not linear.training
+        and mx.default_device() == mx.gpu
+        and mx.metal.is_available()
     )
+    if use_kernel:
+        out, state = gated_delta_kernel(
+            q=queries,
+            k=keys,
+            v=values,
+            g=g,
+            beta=beta,
+            state=state,
+            mask=mask,
+        )
+    else:
+        out, state = gated_delta_ops(
+            q=queries,
+            k=keys,
+            v=values,
+            g=g,
+            beta=beta,
+            state=state,
+            mask=mask,
+        )
 
     if cache is not None:
         cache[1] = state
@@ -601,7 +621,8 @@ def advance_gated_delta_states(
         and mx.default_device() == mx.gpu
         and mx.metal.is_available()
     ):
-        batch_size, _, num_heads, head_dim = keys.shape
+        batch_size, _, _, head_dim = keys.shape
+        num_v_heads = values.shape[2]
         value_dim = values.shape[-1]
         output = GATED_DELTA_STATE_KERNEL(
             inputs=[keys, values, g, beta, initial_states, keys.shape[1]],
@@ -609,9 +630,9 @@ def advance_gated_delta_states(
                 ("InT", initial_states.dtype),
                 ("Dk", head_dim),
                 ("Dv", value_dim),
-                ("Hv", num_heads),
+                ("Hv", num_v_heads),
             ],
-            grid=(32, value_dim, batch_size * num_heads),
+            grid=(32, value_dim, batch_size * num_v_heads),
             threadgroup=(32, 4, 1),
             output_shapes=[initial_states.shape],
             output_dtypes=[initial_states.dtype],
@@ -719,7 +740,12 @@ def verify_block_parallel_replay(
         layer_ids,
         return_rollback_records=True,
     )
-    mx.eval(verifier_logits, verifier_hidden)
+    rollback_tensors = [
+        tensor
+        for record in rollback_records.values()
+        for tensor in record.values()
+    ]
+    mx.eval(verifier_logits, verifier_hidden, *rollback_tensors)
 
     posterior = sample_tokens(verifier_logits, temperature)[0].tolist()
     matched = longest_prefix_match(block_tokens[1:], posterior[:-1])
@@ -806,6 +832,7 @@ def dflash_generate(
     temperature: float,
     stop_token_ids: set[int],
     layer_ids: list[int],
+    speculative_tokens: int | None,
     verify_mode: str,
     verify_chunk_size: int,
 ) -> tuple[list[int], dict[str, Any]]:
@@ -813,6 +840,11 @@ def dflash_generate(
     draft_cache = draft.make_cache()
     total_max_tokens = int(prompt_tokens.shape[0]) + max_new_tokens
     prompt_len = int(prompt_tokens.shape[0])
+    block_size = (
+        draft.block_size
+        if speculative_tokens is None
+        else max(1, min(speculative_tokens, draft.block_size))
+    )
 
     sync_start = time.perf_counter()
     logits, target_hidden = forward_target_with_hidden_states(
@@ -831,7 +863,7 @@ def dflash_generate(
 
     decode_start = time.perf_counter()
     while start < total_max_tokens:
-        block_tokens = [output_tokens[start]] + [draft.mask_token_id] * (draft.block_size - 1)
+        block_tokens = [output_tokens[start]] + [draft.mask_token_id] * (block_size - 1)
         block_input = mx.array(block_tokens, dtype=mx.uint32)[None]
         noise_embedding = target.language_model.model.embed_tokens(block_input)
 
@@ -841,11 +873,11 @@ def dflash_generate(
             cache=draft_cache,
         )
         mx.eval(draft_hidden)
-        trim_draft_cache(draft_cache, draft.block_size)
+        trim_draft_cache(draft_cache, block_size)
 
         draft_logits = lm_head_logits(target, draft_hidden[:, 1:, :])
         drafted_suffix = sample_tokens(draft_logits, temperature)[0].tolist()
-        block_tokens[1:] = drafted_suffix
+        block_tokens[1:] = drafted_suffix[: block_size - 1]
 
         if verify_mode == "stream":
             accepted_inputs, posterior_token, verifier_hidden = verify_block_stream(
@@ -860,7 +892,7 @@ def dflash_generate(
                 target=target,
                 target_cache=target_cache,
                 block_tokens=block_tokens,
-                draft_block_size=draft.block_size,
+                draft_block_size=block_size,
                 temperature=temperature,
                 layer_ids=layer_ids,
                 verify_chunk_size=verify_chunk_size,
@@ -870,7 +902,7 @@ def dflash_generate(
                 target=target,
                 target_cache=target_cache,
                 block_tokens=block_tokens,
-                draft_block_size=draft.block_size,
+                draft_block_size=block_size,
                 temperature=temperature,
                 layer_ids=layer_ids,
             )
@@ -910,6 +942,7 @@ def dflash_generate(
         "acceptance_lengths": acceptance_lengths,
         "peak_memory_gb": peak_memory_gb(),
         "target_cache_summary": cache_summary(target_cache),
+        "speculative_tokens": block_size,
     }
     return output_tokens, metrics
 
@@ -940,6 +973,7 @@ def main() -> None:
                 temperature=args.temperature,
                 stop_token_ids=stop_token_ids,
                 layer_ids=draft.target_layer_ids,
+                speculative_tokens=args.speculative_tokens,
                 verify_mode=args.verify_mode,
                 verify_chunk_size=args.verify_chunk_size,
             )
@@ -958,6 +992,7 @@ def main() -> None:
             temperature=args.temperature,
             stop_token_ids=stop_token_ids,
             layer_ids=draft.target_layer_ids,
+            speculative_tokens=args.speculative_tokens,
             verify_mode=args.verify_mode,
             verify_chunk_size=args.verify_chunk_size,
         )
@@ -968,6 +1003,7 @@ def main() -> None:
     print("\n" + "=" * 60)
     print(f"Target model:             {args.target_model}")
     print(f"Draft model:              {draft_path}")
+    print(f"Speculative tokens:       {metrics['speculative_tokens']}")
     print(f"Verify mode:              {args.verify_mode}")
     if args.verify_mode == "chunked":
         print(f"Verify chunk size:        {args.verify_chunk_size}")
