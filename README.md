@@ -6,13 +6,20 @@ Exact speculative decoding on Apple Silicon, powered by MLX.
 
 DFlash uses a block-diffusion draft model to accelerate LLM inference. This project is a **native MLX runtime** that brings DFlash to Apple Silicon: output is identical to running the target model alone.
 
-| Framework | Qwen3.5-4B tok/s | vs baseline |
+**bf16**
+
+| Framework | Qwen3.5-4B tok/s | Speedup |
 |---|---:|---:|
-| MLX (bf16) | 40.6 | 1.0x |
-| llama.cpp (Q4_K_M) | 76.4 | 1.9x |
-| DFlash + MLX (bf16) | 100.5 | 2.5x |
-| MLX (4-bit) | 119.4 | 2.9x |
-| **DFlash + MLX (4-bit)** | **161.9** | **4.0x** |
+| MLX | 40.6 | 1.0x |
+| **DFlash + MLX** | **100.5** | **2.5x** |
+
+**4-bit quantized**
+
+| Framework | Qwen3.5-4B tok/s | Speedup |
+|---|---:|---:|
+| llama.cpp (Q4_K_M) | 76.4 | 1.0x |
+| MLX | 119.4 | 1.6x |
+| **DFlash + MLX** | **161.9** | **2.1x** |
 
 > Measured on a MacBook Pro M4 Max (36 GB). Absolute numbers vary by chip: the gains are what matter.
 
