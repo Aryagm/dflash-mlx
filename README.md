@@ -1,125 +1,52 @@
-# DFlash on Apple Silicon
+# DFlash for Apple Silicon
 [**Paper**](https://arxiv.org/abs/2602.06036) | [**Blog**](https://z-lab.ai/projects/dflash/) | [**Models**](https://huggingface.co/collections/z-lab/dflash)
 
-This repository started as the public reference code for **DFlash: Block Diffusion for Flash Speculative Decoding**. It now also contains a working **Apple Silicon / MLX** implementation for local DFlash inference on Mac.
+This fork brings **exact DFlash inference to Apple Silicon** with an **MLX-native runtime**.
 
-The main addition in this fork is an **MLX-first runtime** that:
-- runs DFlash locally on Apple Silicon
-- uses a small adapter layer per target-model family
-- currently supports an exact `Qwen3.5-4B + z-lab/Qwen3.5-4B-DFlash` path on Mac
-- keeps benchmark history in CSV so performance changes are tracked over time
-
-## What Works Today
-
-### Stable local Mac path
-
-The current safe path is:
+Today, the flagship path is:
 - target: `mlx-community/Qwen3.5-4B-MLX-4bit`
 - draft: `z-lab/Qwen3.5-4B-DFlash`
-- backend: `MLX`
-- verify mode: `parallel-replay`
-- speculative block size: `16`
+- backend: `MLX / Metal`
+- mode: exact speculative decoding
 
-That path is implemented in:
-- [run_dflash_mlx.py](scripts/run_dflash_mlx.py)
-- [mlx_dflash_runtime.py](scripts/mlx_dflash_runtime.py)
-- [mlx_dflash_adapters.py](scripts/mlx_dflash_adapters.py)
-- [mlx_dflash_draft.py](scripts/mlx_dflash_draft.py)
+On this Mac, that path is the **best exact local result we have measured** for this model:
+- `161.9 tok/s` generation
+- `140.7 tok/s` end-to-end
 
-### Current exact result on this Mac
+## Why This Fork Exists
 
-On the benchmark prompt in [functional_equation.txt](prompts/functional_equation.txt), the current exact MLX result is roughly:
-- `161.9 tok/s` generation TPS
-- `140.7 tok/s` end-to-end TPS
+Upstream DFlash is built around CUDA-first serving and research workflows. This fork adds a **local Apple Silicon runtime** that makes DFlash usable on Mac without treating MLX as an afterthought.
 
-The benchmark history is recorded in:
-- [metrics_history.csv](benchmarks/metrics_history.csv)
+What that means in practice:
+- exact local inference on Apple Silicon
+- a reusable MLX runtime instead of a one-off script
+- adapter-based model support
+- benchmark history tracked in CSV
 
-### Current benchmark snapshot
+## Current Result
 
-Steady-state numbers on the same prompt and hardware:
+Steady-state numbers on [functional_equation.txt](prompts/functional_equation.txt):
 
 | Path | Generation TPS | End-to-end TPS |
 |---|---:|---:|
 | Plain MLX BF16 | `40.6` | `37.6` |
 | DFlash MLX BF16 | `100.5` | `92.3` |
 | Plain MLX 4-bit | `119.4` | `98.8` |
-| DFlash MLX 4-bit | `161.9` | `140.7` |
+| **DFlash MLX 4-bit** | **`161.9`** | **`140.7`** |
 
-These are the current exact, local results to beat.
+Current uplift:
+- about `2.47x` over plain MLX BF16 on decode speed
+- about `1.36x` over plain MLX 4-bit on decode speed
 
-## Status
+Benchmark history lives in [benchmarks/metrics_history.csv](benchmarks/metrics_history.csv).
 
-### MLX runtime
-
-Implemented:
-- generic MLX DFlash loop
-- adapter-based target abstraction
-- local draft loading and optional draft quantization
-- benchmark logging
-- `qwen3_5` target adapter
-
-Verified:
-- exact greedy decoding for the current `Qwen3.5-4B` MLX path
-- parity preserved after the adapter/runtime refactor
-
-Not yet implemented:
-- MLX adapters for `qwen3`, `llama`, `gpt_oss`, `qwen3_next`, `qwen3_5_moe`, `qwen3_moe`, `kimi`
-- packaged library API for the MLX runtime
-- production serving layer
-
-Experimental but not enabled:
-- a more aggressive compiled verifier path exists in the custom Qwen3.5 model fork, but it is disabled because it is not exact over longer runs
-
-## Supported DFlash Draft Checkpoints
-
-Upstream DFlash currently publishes drafts for the following targets:
-
-| Model | DFlash Draft |
-|---|---|
-| Kimi-K2.5 (Preview) | [z-lab/Kimi-K2.5-DFlash](https://huggingface.co/z-lab/Kimi-K2.5-DFlash) |
-| Qwen3.5-4B | [z-lab/Qwen3.5-4B-DFlash](https://huggingface.co/z-lab/Qwen3.5-4B-DFlash) |
-| Qwen3.5-9B | [z-lab/Qwen3.5-9B-DFlash](https://huggingface.co/z-lab/Qwen3.5-9B-DFlash) |
-| Qwen3.5-27B | [z-lab/Qwen3.5-27B-DFlash](https://huggingface.co/z-lab/Qwen3.5-27B-DFlash) |
-| Qwen3.5-35B-A3B | [z-lab/Qwen3.5-35B-A3B-DFlash](https://huggingface.co/z-lab/Qwen3.5-35B-A3B-DFlash) |
-| Qwen3-Coder-Next | [z-lab/Qwen3-Coder-Next-DFlash](https://huggingface.co/z-lab/Qwen3-Coder-Next-DFlash) |
-| Qwen3-Coder-30B-A3B | [z-lab/Qwen3-Coder-30B-A3B-DFlash](https://huggingface.co/z-lab/Qwen3-Coder-30B-A3B-DFlash) |
-| gpt-oss-20b | [z-lab/gpt-oss-20b-DFlash](https://huggingface.co/z-lab/gpt-oss-20b-DFlash) |
-| gpt-oss-120b | [z-lab/gpt-oss-120b-DFlash](https://huggingface.co/z-lab/gpt-oss-120b-DFlash) |
-| Qwen3-4B | [z-lab/Qwen3-4B-DFlash-b16](https://huggingface.co/z-lab/Qwen3-4B-DFlash-b16) |
-| Qwen3-8B | [z-lab/Qwen3-8B-DFlash-b16](https://huggingface.co/z-lab/Qwen3-8B-DFlash-b16) |
-| Llama-3.1-8B-Instruct | [z-lab/LLaMA3.1-8B-Instruct-DFlash-UltraChat](https://huggingface.co/z-lab/LLaMA3.1-8B-Instruct-DFlash-UltraChat) |
-
-The MLX runtime is structured so these map to a small number of **family adapters**, not one implementation per checkpoint.
-
-## Installation
-
-### Base repository
+## Quick Start
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
-```
-
-### Apple Silicon / MLX path
-
-The MLX runtime is separate from the CUDA-first upstream paths. Install MLX support explicitly:
-
-```bash
 pip install mlx mlx-lm
-```
-
-Recommended environment:
-- Apple Silicon Mac
-- Python `>= 3.10`
-- a fresh virtual environment
-
-## Quick Start
-
-### Best current local Mac command
-
-```bash
 python3 scripts/run_dflash_mlx.py \
   --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
   --draft-model z-lab/Qwen3.5-4B-DFlash \
@@ -127,89 +54,51 @@ python3 scripts/run_dflash_mlx.py \
   --warmup-runs 1
 ```
 
-Useful flags:
-- `--verify-mode {stream,chunked,parallel-replay}`
-- `--speculative-tokens N`
-- `--draft-quant-bits {4,8}`
-- `--print-output`
-- `--experiment-tag TAG`
-
-### Example output
-
 The script reports:
 - prompt TPS
 - generation TPS
 - end-to-end TPS
-- average speculative acceptance
-- acceptance lengths
+- average acceptance
 - peak memory
 
-## MLX Runtime Architecture
+## What Works Today
+
+Stable and validated:
+- exact `Qwen3.5-4B + z-lab/Qwen3.5-4B-DFlash`
+- MLX/Metal runtime on Apple Silicon
+- benchmark logging and regression tracking
+
+Important qualifier:
+- this is currently a **research-grade Mac runtime**, not a polished serving product
+
+## Runtime Layout
 
 The Apple Silicon path is split into four pieces:
 
-### 1. Draft model
+- [scripts/run_dflash_mlx.py](scripts/run_dflash_mlx.py)
+  Thin CLI for local benchmarking and generation.
+- [scripts/mlx_dflash_runtime.py](scripts/mlx_dflash_runtime.py)
+  Generic MLX DFlash loop.
+- [scripts/mlx_dflash_adapters.py](scripts/mlx_dflash_adapters.py)
+  Family-specific target adapters. The working adapter today is `qwen3_5`.
+- [scripts/mlx_dflash_draft.py](scripts/mlx_dflash_draft.py)
+  MLX implementation of the DFlash draft model.
 
-[mlx_dflash_draft.py](scripts/mlx_dflash_draft.py)
-- loads DFlash draft checkpoints from Hugging Face or local paths
-- implements the MLX draft model
-- optionally quantizes the draft model
+`Qwen3.5` also uses:
+- [scripts/custom_qwen35_dflash_model.py](scripts/custom_qwen35_dflash_model.py)
+- [scripts/prepare_custom_mlx_model.py](scripts/prepare_custom_mlx_model.py)
 
-### 2. Target adapters
+Those files exist because DFlash on `Qwen3.5` needs hidden-state hooks and correct rollback for its hybrid cache.
 
-[mlx_dflash_adapters.py](scripts/mlx_dflash_adapters.py)
-- defines the target-model adapter interface
-- contains the current `qwen3_5` adapter
-- handles prompt construction, hidden-state extraction, cache rollback, and model resolution
+## Benchmarking
 
-### 3. Generic DFlash runtime
-
-[mlx_dflash_runtime.py](scripts/mlx_dflash_runtime.py)
-- implements the draft/verify loop
-- does not hard-code Qwen3.5-specific logic
-- only depends on the adapter interface
-
-### 4. CLI
-
-[run_dflash_mlx.py](scripts/run_dflash_mlx.py)
-- thin runner around the adapter + runtime stack
-- prints metrics
-- appends benchmark rows to CSV
-
-## Custom Qwen3.5 MLX Fork
-
-The current `qwen3_5` path uses a local custom MLX model fork:
-- [custom_qwen35_dflash_model.py](scripts/custom_qwen35_dflash_model.py)
-- [prepare_custom_mlx_model.py](scripts/prepare_custom_mlx_model.py)
-
-This is needed because DFlash on `Qwen3.5` requires:
-- selected intermediate hidden states during verification
-- correct rollback of Qwen3.5 hybrid caches after partial speculative acceptance
-
-The adapter resolves stock `qwen3_5` MLX models into a prepared local custom model directory automatically.
-
-## Benchmarks
-
-### MLX benchmark history
-
-Every benchmark run can append a row to:
-- [metrics_history.csv](benchmarks/metrics_history.csv)
-
-The shared CSV helpers are:
-- [benchmark_history.py](scripts/benchmark_history.py)
-- [backfill_chat_history.py](scripts/backfill_chat_history.py)
-
-### Plain MLX baseline
-
-Use:
+Plain MLX baseline:
 
 ```bash
 python3 scripts/benchmark_mlx.py
 ```
 
-### DFlash MLX benchmark
-
-Use:
+DFlash MLX benchmark:
 
 ```bash
 python3 scripts/run_dflash_mlx.py \
@@ -218,60 +107,47 @@ python3 scripts/run_dflash_mlx.py \
   --warmup-runs 1
 ```
 
-### Metric definitions
+Metric definitions:
+- `Prompt TPS`: prompt tokens / prefill time
+- `Generation TPS`: generated tokens / decode time
+- `End-to-end TPS`: generated tokens / total request time after model load
 
-- `Prompt TPS`: prompt tokens divided by prefill time
-- `Generation TPS`: generated tokens divided by decode time
-- `End-to-end TPS`: generated tokens divided by total request time after model load
+If you care about raw decode speed, use `Generation TPS`. If you care about what a local user actually feels, use `End-to-end TPS`.
 
-`Generation TPS` is the cleanest decode-speed metric. `End-to-end TPS` is usually the most useful single-request metric.
+## Model Coverage
 
-## Upstream Backends
+The MLX runtime is built to support more than one checkpoint family, but the current production-quality Mac path is `Qwen3.5-4B`.
 
-The original repository also keeps the upstream DFlash paths:
-- Transformers
-- SGLang
-- vLLM
+Upstream DFlash drafts already exist for additional families, including:
+- Qwen3 / Qwen3.5
+- Qwen3 Coder / MoE variants
+- Llama 3.1
+- gpt-oss
+- Kimi-K2.5
 
-These are still documented by the original project and remain useful on supported non-Mac stacks.
+See the full collection here:
+- [Hugging Face collection](https://huggingface.co/collections/z-lab/dflash)
 
-### Transformers
+## Status
 
-```bash
-uv pip install -e .
-```
+What is true right now:
+- the MLX runtime is real
+- the current path is exact
+- the best stable setup is also the fastest stable setup we have found so far
 
-### SGLang
-
-```bash
-uv pip install -e ".[sglang]"
-```
-
-### vLLM
-
-```bash
-uv pip install -e ".[vllm]"
-uv pip install -U vllm --torch-backend=auto --extra-index-url https://wheels.vllm.ai/nightly
-```
+What is not true yet:
+- this is not a general-purpose packaged library
+- this is not full adapter coverage for every published DFlash checkpoint
+- this is not the final performance ceiling for Apple Silicon
 
 ## Roadmap
 
-The MLX-first runtime is now structured to support additional families through adapters. The next adapters are likely:
-- `qwen3`
-- `llama`
-- `gpt_oss`
-- `qwen3_next`
-- `qwen3_5_moe`
-- `qwen3_moe`
-- `kimi`
-
-## Acknowledgement
-
-Huge thanks to [@dcw02](https://github.com/dcw02), [@gongy](https://github.com/gongy), and the team at [@modal-labs](https://github.com/modal-labs) for their fast, high-quality support in bringing DFlash to SGLang. And huge thanks as well to [@benchislett](https://github.com/benchislett) at NVIDIA for his work in bringing DFlash to vLLM and helping make it available to the broader serving community.
+Near-term work:
+- add more MLX adapters
+- make the runtime easier to reuse outside this repo
+- push verifier internals deeper into the model path
 
 ## Citation
-
-If you find DFlash useful, please cite the paper:
 
 ```bibtex
 @article{chen2026dflash,
