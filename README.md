@@ -45,7 +45,7 @@ The upstream [DFlash paper](https://arxiv.org/abs/2602.06036) targets CUDA. Gett
 - **Hidden state extraction**: DFlash's draft model needs intermediate hidden states from the target model, not just logits. We patched the MLX model forward pass to expose these without breaking the existing inference path or KV cache.
 - **KV cache rollback**: when the target rejects a proposed token, the KV cache has to be rolled back to the last accepted position. Qwen3.5's hybrid sliding-window + global attention cache makes this non-trivial: each layer type needs different rollback logic.
 - **Model-family adapter system**: different model architectures (Qwen, Llama, etc.) wire up hidden states and caches differently. The runtime uses a pluggable adapter layer so adding a new model family doesn't require touching the core decode loop.
-- **Draft model quantization**: the draft model can be quantized independently of the target to reduce memory pressure, since draft quality only needs to be "good enough" for high acceptance rates.
+- **Draft model quantization**: the draft model can be quantized independently of the target via `--draft-quant-bits`. In practice, on our Qwen3.5-4B path it hurt more than it helped: unquantized draft hits 161 tok/s, 8-bit drops to 155, and 4-bit to 140. The overhead of lower acceptance rates outweighs the memory savings. Still, for larger models or tighter memory budgets it may be worth exploring.
 
 ## Supported Models
 
