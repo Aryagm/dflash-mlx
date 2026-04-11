@@ -73,6 +73,7 @@ class DFlashAttention(nn.Module):
         self.n_kv_heads = args.num_key_value_heads
         self.head_dim = args.head_dim
         self.scale = self.head_dim**-0.5
+        self.mask_mode = "none"
 
         self.q_proj = nn.Linear(
             args.hidden_size,
@@ -150,7 +151,7 @@ class DFlashAttention(nn.Module):
             queries = self.rope(queries, offset=context_len)
             keys = self.rope(keys)
 
-        mask = None if query_len == 1 else "causal"
+        mask = "causal" if self.mask_mode == "causal" and query_len > 1 else None
         output = scaled_dot_product_attention(
             queries,
             keys,
@@ -206,6 +207,7 @@ class DFlashDraftModel(nn.Module):
         self.norm = nn.RMSNorm(args.hidden_size, eps=args.rms_norm_eps)
         self.block_size = args.block_size
         self.mask_token_id = int(args.dflash_config["mask_token_id"])
+        self.attention_mask_mode = "none"
 
     def make_cache(self) -> list[cache_lib.KVCache]:
         return [cache_lib.KVCache() for _ in self.layers]
@@ -221,6 +223,7 @@ class DFlashDraftModel(nn.Module):
         if cache is None:
             cache = [None] * len(self.layers)
         for layer, layer_cache in zip(self.layers, cache):
+            layer.self_attn.mask_mode = self.attention_mask_mode
             hidden_states = layer(hidden_states, target_hidden, cache=layer_cache)
         return self.norm(hidden_states)
 

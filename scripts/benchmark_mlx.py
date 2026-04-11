@@ -268,6 +268,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     random.seed(args.seed)
+    history_meta = (
+        {}
+        if args.no_history
+        else run_metadata("benchmark_mlx.py", experiment_tag=args.experiment_tag)
+    )
 
     prompts = load_prompts(args)
     print(f"[load] {args.model}")
@@ -276,7 +281,6 @@ def main() -> None:
     warmup = min(args.warmup_prompts, len(prompts) if args.prompt is None and args.prompt_file is None else 0)
     warmup_prompts = prompts[:warmup]
     benchmark_prompts = prompts[warmup:] if warmup else prompts
-    history_meta = run_metadata("benchmark_mlx.py", experiment_tag=args.experiment_tag)
     prompt_source = (
         "prompt"
         if args.prompt is not None

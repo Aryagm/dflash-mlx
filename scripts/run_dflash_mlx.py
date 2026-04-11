@@ -71,6 +71,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--verify-chunk-size", type=int, default=4)
     parser.add_argument("--draft-quant-bits", type=int, default=None)
     parser.add_argument("--draft-quant-group-size", type=int, default=64)
+    parser.add_argument(
+        "--draft-attention-mask",
+        choices=["auto", "none", "causal"],
+        default="auto",
+        help=(
+            "Attention mask used inside the DFlash drafter. 'auto' uses the "
+            "fastest measured exact-safe mask for the target family."
+        ),
+    )
     parser.add_argument("--print-output", action="store_true")
     parser.add_argument(
         "--history-file",
@@ -95,6 +104,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     mx.random.seed(args.seed)
+    history_meta = (
+        {}
+        if args.no_history
+        else run_metadata("run_dflash_mlx.py", experiment_tag=args.experiment_tag)
+    )
     prompt_text = args.prompt_file.read_text()
 
     target = load_target_model(args.target_model)
@@ -102,6 +116,10 @@ def main() -> None:
 
     print(f"[load draft] {args.draft_model}")
     draft, draft_path = load_draft_model(args.draft_model)
+    draft_attention_mask = args.draft_attention_mask
+    if draft_attention_mask == "auto":
+        draft_attention_mask = "causal" if target.adapter.family == "qwen3_5" else "none"
+    draft.attention_mask_mode = draft_attention_mask
     draft_quantization = maybe_quantize_draft_model(
         draft,
         bits=args.draft_quant_bits,
@@ -171,6 +189,7 @@ def main() -> None:
     print(f"Target model:             {target.resolved_model_path}")
     print(f"Target adapter:           {target.adapter.family}")
     print(f"Draft model:              {draft_path}")
+    print(f"Draft attention mask:     {draft_attention_mask}")
     if draft_quantization is not None:
         print(
             "Draft quantization:       "
@@ -195,7 +214,7 @@ def main() -> None:
 
     if not args.no_history:
         history_row = {
-            **run_metadata("run_dflash_mlx.py", experiment_tag=args.experiment_tag),
+            **history_meta,
             "record_type": "run",
             "target_model": args.target_model,
             "resolved_target_model": str(target.resolved_model_path),
@@ -206,6 +225,7 @@ def main() -> None:
             "draft_quant_group_size": (
                 args.draft_quant_group_size if args.draft_quant_bits is not None else ""
             ),
+            "draft_attention_mask": draft_attention_mask,
             "prompt_file": str(args.prompt_file),
             "prompt_sha256": prompt_sha256(prompt_text),
             "max_new_tokens": args.max_new_tokens,

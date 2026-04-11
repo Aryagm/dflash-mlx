@@ -96,7 +96,7 @@ def append_rows(path: Path, rows: Iterable[dict[str, Any]]) -> None:
 
     write_mode = "a" if path.exists() and merged_fields == fieldnames else "w"
     with path.open(write_mode, newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=merged_fields)
+        writer = csv.DictWriter(handle, fieldnames=merged_fields, lineterminator="\n")
         if write_mode == "w":
             writer.writeheader()
             for row in existing_rows:

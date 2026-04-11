@@ -73,8 +73,9 @@ def verify_block_stream(
             target_cache,
             layer_ids,
         )
-        mx.eval(logits_step, hidden_step)
-        next_token = int(sample_tokens(logits_step[:, -1, :], temperature).item())
+        next_token_tensor = sample_tokens(logits_step[:, -1, :], temperature)
+        mx.eval(next_token_tensor, hidden_step)
+        next_token = int(next_token_tensor.item())
         verified_hidden_steps.append(hidden_step)
 
         if idx == len(block_tokens) - 1:
@@ -100,9 +101,10 @@ def verify_block_parallel_replay(
         layer_ids,
         return_rollback_records=True,
     )
-    mx.eval(verifier_logits, verifier_hidden)
 
-    posterior = sample_tokens(verifier_logits, temperature)[0].tolist()
+    posterior_tokens = sample_tokens(verifier_logits, temperature)
+    mx.eval(posterior_tokens, verifier_hidden)
+    posterior = posterior_tokens[0].tolist()
     matched = longest_prefix_match(block_tokens[1:], posterior[:-1])
     accepted_inputs = matched + 1
 
@@ -146,8 +148,9 @@ def verify_block_parallel_lazy_logits(
         logits_chunk = target.lm_head_logits(
             norm_hidden_states[:, chunk_start:chunk_end, :]
         )
-        mx.eval(logits_chunk)
-        posterior_chunk = sample_tokens(logits_chunk, temperature)[0].tolist()
+        posterior_tokens = sample_tokens(logits_chunk, temperature)
+        mx.eval(posterior_tokens)
+        posterior_chunk = posterior_tokens[0].tolist()
 
         for local_idx, token in enumerate(posterior_chunk):
             pos = chunk_start + local_idx
@@ -198,8 +201,9 @@ def verify_block_accept_all(
         target_cache,
         layer_ids,
     )
-    mx.eval(posterior_logits, verifier_hidden)
-    posterior_token = int(sample_tokens(posterior_logits[:, -1, :], temperature).item())
+    posterior_token_tensor = sample_tokens(posterior_logits[:, -1, :], temperature)
+    mx.eval(posterior_token_tensor, verifier_hidden)
+    posterior_token = int(posterior_token_tensor.item())
     return len(block_tokens), posterior_token, verifier_hidden
 
 
@@ -225,8 +229,9 @@ def verify_block_chunked(
             target_cache,
             layer_ids,
         )
-        mx.eval(chunk_logits, chunk_hidden)
-        posterior_chunk = sample_tokens(chunk_logits, temperature)[0].tolist()
+        posterior_tokens = sample_tokens(chunk_logits, temperature)
+        mx.eval(posterior_tokens, chunk_hidden)
+        posterior_chunk = posterior_tokens[0].tolist()
 
         max_compare = min(len(chunk_tokens), draft_block_size - cursor - 1)
         local_matches = 0
@@ -315,11 +320,11 @@ def dflash_generate(
             target_hidden=target_hidden,
             cache=draft_cache,
         )
-        mx.eval(draft_hidden)
-        trim_draft_cache(draft_cache, block_size)
-
         draft_logits = target.lm_head_logits(draft_hidden[:, 1:, :])
-        drafted_suffix = sample_tokens(draft_logits, temperature)[0].tolist()
+        drafted_tokens = sample_tokens(draft_logits, temperature)
+        mx.eval(drafted_tokens)
+        trim_draft_cache(draft_cache, block_size)
+        drafted_suffix = drafted_tokens[0].tolist()
         block_tokens[1:] = drafted_suffix[: block_size - 1]
 
         if verify_mode == "stream":

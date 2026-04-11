@@ -10,7 +10,7 @@ import mlx.nn as nn
 from huggingface_hub import snapshot_download
 from mlx_lm import load
 from mlx_lm.models import cache as cache_lib
-from mlx_lm.models import qwen3_5
+from mlx_lm.models import qwen3, qwen3_5
 from mlx_lm.models.gated_delta import (
     compute_g,
     gated_delta_kernel,
@@ -564,7 +564,154 @@ class Qwen35TargetAdapter(MLXTargetAdapter):
         return " ".join(parts)
 
 
+class Qwen3TargetAdapter(MLXTargetAdapter):
+    family = "qwen3"
+
+    def build_prompt(self, tokenizer, prompt_text: str) -> mx.array:
+        messages = [{"role": "user", "content": prompt_text}]
+        try:
+            prompt = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=False,
+            )
+        except TypeError:
+            prompt = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        tokens = tokenizer.encode(prompt, add_special_tokens=False)
+        return mx.array(tokens, dtype=mx.uint32)
+
+    def stop_token_ids(self, tokenizer) -> set[int]:
+        eos_token_ids = tokenizer.eos_token_ids
+        if isinstance(eos_token_ids, int):
+            return {eos_token_ids}
+        return set(eos_token_ids)
+
+    def make_cache(self, model) -> list[Any]:
+        return [cache_lib.KVCache() for _ in model.layers]
+
+    def embed_tokens(self, model, tokens: mx.array) -> mx.array:
+        return model.model.embed_tokens(tokens)
+
+    def lm_head_logits(self, model, hidden_states: mx.array) -> mx.array:
+        if model.args.tie_word_embeddings:
+            return model.model.embed_tokens.as_linear(hidden_states)
+        return model.lm_head(hidden_states)
+
+    def _forward_states(
+        self,
+        model,
+        inputs: mx.array,
+        cache: list[Any],
+        layer_ids: list[int],
+    ) -> tuple[mx.array, mx.array]:
+        text_model = model.model
+        hidden_states = text_model.embed_tokens(inputs)
+        mask = qwen3.create_attention_mask(hidden_states, cache[0])
+
+        selected_hidden_states: list[mx.array] = []
+        target_layer_ids = set(layer_ids)
+        for idx, (layer, layer_cache) in enumerate(zip(text_model.layers, cache)):
+            hidden_states = layer(hidden_states, mask=mask, cache=layer_cache)
+            if idx in target_layer_ids:
+                selected_hidden_states.append(hidden_states)
+
+        norm_hidden_states = text_model.norm(hidden_states)
+        target_hidden = mx.concatenate(selected_hidden_states, axis=-1)
+        return norm_hidden_states, target_hidden
+
+    def forward_with_hidden_states(
+        self,
+        model,
+        inputs: mx.array,
+        cache: list[Any],
+        layer_ids: list[int],
+        return_rollback_records: bool = False,
+    ) -> tuple[mx.array, mx.array] | tuple[mx.array, mx.array, dict[int, dict[str, mx.array]]]:
+        norm_hidden_states, target_hidden = self._forward_states(
+            model,
+            inputs,
+            cache,
+            layer_ids,
+        )
+        logits = self.lm_head_logits(model, norm_hidden_states)
+        if return_rollback_records:
+            return logits, target_hidden, {}
+        return logits, target_hidden
+
+    def forward_verifier_states(
+        self,
+        model,
+        inputs: mx.array,
+        cache: list[Any],
+        layer_ids: list[int],
+    ) -> tuple[mx.array, mx.array, dict[int, dict[str, mx.array]]]:
+        norm_hidden_states, target_hidden = self._forward_states(
+            model,
+            inputs,
+            cache,
+            layer_ids,
+        )
+        return norm_hidden_states, target_hidden, {}
+
+    def forward_accept_all_block(
+        self,
+        model,
+        inputs: mx.array,
+        cache: list[Any],
+        layer_ids: list[int],
+    ) -> tuple[mx.array, mx.array]:
+        norm_hidden_states, target_hidden = self._forward_states(
+            model,
+            inputs,
+            cache,
+            layer_ids,
+        )
+        return self.lm_head_logits(model, norm_hidden_states[:, -1:, :]), target_hidden
+
+    def snapshot_linear_caches(
+        self,
+        model,
+        cache: list[Any],
+    ) -> dict[int, list[mx.array | None]]:
+        return {}
+
+    def restore_linear_caches(
+        self,
+        model,
+        cache: list[Any],
+        snapshots: dict[int, list[mx.array | None]],
+    ) -> None:
+        return None
+
+    def rewind_kv_caches(self, cache: list[Any], num_tokens: int) -> None:
+        for layer_cache in cache:
+            if isinstance(layer_cache, cache_lib.KVCache):
+                layer_cache.trim(num_tokens)
+
+    def rollback_linear_caches(
+        self,
+        model,
+        cache: list[Any],
+        rollback_records: dict[int, dict[str, mx.array]],
+        accepted_inputs: int,
+    ) -> None:
+        return None
+
+    def cache_summary(self, cache: list[Any]) -> str:
+        return " ".join(
+            f"{idx}:kv={layer_cache.offset}"
+            for idx, layer_cache in enumerate(cache)
+            if isinstance(layer_cache, cache_lib.KVCache)
+        )
+
+
 ADAPTERS: dict[str, type[MLXTargetAdapter]] = {
+    "qwen3": Qwen3TargetAdapter,
     "qwen3_5": Qwen35TargetAdapter,
 }
 
