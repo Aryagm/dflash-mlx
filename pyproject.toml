@@ -22,16 +22,3 @@ dflash-mlx-prepare-model = "dflash_mlx.model_prep:main"
 
 [tool.setuptools.packages.find]
 include = ["dflash_mlx*"]
-
-[project.optional-dependencies]
-charts = [
-    "matplotlib",
-]
-video = [
-    "opencv-python",
-    "pillow",
-]
-dev = [
-    "pytest",
-    "matplotlib",
-]

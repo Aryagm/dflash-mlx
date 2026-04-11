@@ -42,7 +42,6 @@ def git_metadata() -> dict[str, Any]:
         "git_commit": commit,
         "git_short_commit": short_commit,
         "git_dirty": bool(status),
-        "git_status_short": " | ".join(line.strip() for line in status.splitlines() if line.strip()),
     }
 
 
