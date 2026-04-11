@@ -2,6 +2,8 @@
 
 Lossless speculative decoding on Apple Silicon. **Same output as the target model, just faster.**
 
+![Benchmarks](assets/benchmark-chart.png)
+
 https://github.com/user-attachments/assets/13411079-7ffd-4f3f-a3cd-fdf3dd44a537
 
 **Qwen3.5-4B bf16** on M4 Max, 36 GB &mdash; **2.8x** faster than llama.cpp, **2.5x** faster than MLX-LM
@@ -21,8 +23,6 @@ https://github.com/user-attachments/assets/b0b8f4ed-d41d-498e-8d39-475437fef9ff
 | llama.cpp (Q4_K_M) | 76.4 | 1.0x |
 | MLX-LM | 119.4 | 1.6x |
 | **DFlash + MLX** | **161.9** | **2.1x** |
-
-![Benchmarks](assets/benchmark-chart.png)
 
 > Absolute numbers vary by chip. The speedup ratios are what matter.
 
