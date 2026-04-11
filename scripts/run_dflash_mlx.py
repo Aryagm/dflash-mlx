@@ -148,6 +148,13 @@ def main() -> None:
             "[warning] accept-all is inexact: it trusts drafted blocks and may "
             "diverge from target-model output."
         )
+        if effective_speculative_tokens > draft.block_size:
+            print(
+                "[warning] oversized accept-all block: this draft checkpoint is "
+                f"configured for block_size={draft.block_size}, but "
+                f"speculative_tokens={effective_speculative_tokens}. This is a "
+                "raw throughput probe, not lossless DFlash."
+            )
     with wired_limit(target.model):
         for warmup_idx in range(args.warmup_runs):
             _, warm_metrics = dflash_generate(

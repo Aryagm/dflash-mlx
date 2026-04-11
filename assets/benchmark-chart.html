@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DFlash Benchmark</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+  :root {
+    --bg: #080b10;
+    --card-bg: #0c1018;
+    --card-border: #161d2a;
+    --text-muted: #4a5568;
+    --text-dim: #6b7a90;
+    --text-normal: #9aa8ba;
+    --text-bright: #d4dce8;
+    --text-white: #eef2f7;
+    --blue-dim: #1a3a6e;
+    --blue-mid: #2b5ea8;
+    --blue-bright: #4f8cff;
+    --blue-glow: #4f8cff33;
+    --green: #34d399;
+    --green-dim: #0d3a2a;
+    --amber: #f59e0b;
+    --bar-gray: #1a2030;
+    --bar-gray-fill: #252d3d;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text-bright);
+    font-family: 'Outfit', sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 40px;
+  }
+
+  .chart-container {
+    width: 920px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 48px 52px 40px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .chart-container::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--blue-bright), transparent);
+    opacity: 0.4;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 40px;
+  }
+
+  .header h1 {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 700;
+    font-size: 26px;
+    color: var(--text-white);
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+  }
+
+  .header .subtitle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--text-dim);
+    letter-spacing: 0.3px;
+  }
+
+  .header .subtitle .sep {
+    color: var(--card-border);
+    margin: 0 6px;
+  }
+
+  .panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    margin-bottom: 32px;
+  }
+
+  .panel {
+    position: relative;
+  }
+
+  .panel-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--card-border);
+  }
+
+  .bar-group {
+    margin-bottom: 14px;
+    position: relative;
+  }
+
+  .bar-group:last-child {
+    margin-bottom: 0;
+  }
+
+  .bar-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+
+  .bar-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-normal);
+  }
+
+  .bar-label.hero {
+    color: var(--text-white);
+    font-weight: 600;
+  }
+
+  .bar-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-dim);
+  }
+
+  .bar-value.hero {
+    color: var(--text-white);
+    font-weight: 700;
+  }
+
+  .bar-value.dflash {
+    color: var(--blue-bright);
+    font-weight: 600;
+  }
+
+  .bar-track {
+    width: 100%;
+    height: 28px;
+    background: var(--bar-gray);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+  }
+
+  .bar-fill.plain {
+    background: linear-gradient(90deg, #1e2a3e, var(--bar-gray-fill));
+  }
+
+  .bar-fill.dflash {
+    background: linear-gradient(90deg, var(--blue-dim), var(--blue-mid));
+  }
+
+  .bar-fill.hero {
+    background: linear-gradient(90deg, #1a4a9e, var(--blue-bright));
+    box-shadow: 0 0 20px var(--blue-glow), 0 0 40px #4f8cff18;
+  }
+
+  .bar-fill.hero::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 60px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08));
+    border-radius: 0 6px 6px 0;
+  }
+
+  .badges {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    padding-top: 24px;
+    border-top: 1px solid var(--card-border);
+  }
+
+  .badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--card-border);
+    background: #0e1420;
+  }
+
+  .badge-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--blue-bright);
+  }
+
+  .badge-value.green {
+    color: var(--green);
+  }
+
+  .badge-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: var(--text-dim);
+    line-height: 1.3;
+  }
+
+  .badge-label span {
+    display: block;
+  }
+
+  .exact-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--green);
+    background: var(--green-dim);
+    border: 1px solid #1a5a40;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+  }
+
+  .exact-tag::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+</style>
+</head>
+<body>
+<div class="chart-container">
+  <div class="header">
+    <h1>DFlash on Apple Silicon</h1>
+    <div class="subtitle">
+      Exact speculative decoding<span class="sep">·</span>Qwen3.5-4B<span class="sep">·</span>MLX / Metal<span class="sep">·</span>M-series Mac
+    </div>
+  </div>
+
+  <div class="panels">
+    <!-- Generation tok/s -->
+    <div class="panel">
+      <div class="panel-title">Generation tok/s</div>
+
+      <div class="bar-group">
+        <div class="bar-label-row">
+          <span class="bar-label">Plain MLX BF16</span>
+          <span class="bar-value">40.6</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill plain" style="width: 25.1%"></div>
+        </div>
+      </div>
+
+      <div class="bar-group">
+        <div class="bar-label-row">
+          <span class="bar-label dflash">DFlash MLX BF16</span>
+          <span class="bar-value dflash">100.5</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill dflash" style="width: 62.1%"></div>
+        </div>
+      </div>
+
+      <div class="bar-group">
+        <div class="bar-label-row">
+          <span class="bar-label">Plain MLX 4-bit</span>
+          <span class="bar-value">119.4</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill plain" style="width: 73.7%"></div>
+        </div>
+      </div>
+
+      <div class="bar-group">
+        <div class="bar-label-row">
+          <span class="bar-label hero">DFlash MLX 4-bit</span>
+          <span class="bar-value hero">161.9</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill hero" style="width: 100%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- End-to-end tok/s -->
+    <div class="panel">
+      <div class="panel-title">End-to-end tok/s</div>
+
+      <div class="bar-group">
+        <div class="bar-label-row">
+          <span class="bar-label">Plain MLX BF16</span>
+          <span class="bar-value">37.6</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill plain" style="width: 26.7%"></div>
+        </div>
+      </div>
+
+      <div class="bar-group">
+        <div class="bar-label-row">
+          <span class="bar-label dflash">DFlash MLX BF16</span>
+          <span class="bar-value dflash">92.3</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill dflash" style="width: 65.6%"></div>
+        </div>
+      </div>
+
+      <div class="bar-group">
+        <div class="bar-label-row">
+          <span class="bar-label">Plain MLX 4-bit</span>
+          <span class="bar-value">98.8</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill plain" style="width: 70.2%"></div>
+        </div>
+      </div>
+
+      <div class="bar-group">
+        <div class="bar-label-row">
+          <span class="bar-label hero">DFlash MLX 4-bit</span>
+          <span class="bar-value hero">140.7</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill hero" style="width: 100%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="badges">
+    <div class="badge">
+      <span class="badge-value">2.47x</span>
+      <span class="badge-label"><span>faster than</span><span>plain BF16</span></span>
+    </div>
+    <div class="badge">
+      <span class="badge-value">1.36x</span>
+      <span class="badge-label"><span>faster than</span><span>plain 4-bit</span></span>
+    </div>
+    <div class="badge">
+      <span class="exact-tag">EXACT</span>
+      <span class="badge-label"><span>identical output</span><span>no approximation</span></span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -7,10 +7,10 @@ from pathlib import Path
 
 # --- Data (sorted smallest to largest) ---
 entries = [
-    ("MLX bf16",              40.6,  "#3d4460"),
+    ("MLX-LM bf16",           40.6,  "#3d4460"),
     ("llama.cpp Q4_K_M",      76.4,  "#3d4460"),
     ("DFlash + MLX bf16",    100.5,  "#3668b2"),
-    ("MLX 4-bit",            119.4,  "#3d4460"),
+    ("MLX-LM 4-bit",         119.4,  "#3d4460"),
     ("DFlash + MLX 4-bit",   161.9,  "#4f8cff"),
 ]
 

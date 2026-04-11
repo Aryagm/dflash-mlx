@@ -2,26 +2,43 @@
 
 Exact speculative decoding on Apple Silicon, powered by MLX.
 
+https://github.com/user-attachments/assets/fee66404-9d56-4417-82e8-674ee9d4e483
+
 ![Benchmarks](assets/benchmark-chart.png)
 
 DFlash uses a block-diffusion draft model to accelerate LLM inference. This project is a **native MLX runtime** that brings DFlash to Apple Silicon: output is identical to running the target model alone.
 
-**bf16**
+**Qwen3.5-4B**
 
 | Framework | Qwen3.5-4B tok/s | Speedup |
 |---|---:|---:|
-| MLX | 40.6 | 1.0x |
-| **DFlash + MLX** | **100.5** | **2.5x** |
+| llama.cpp | 35.6 | 1.0x |
+| MLX-LM | 40.6 | 1.1x |
+| **DFlash + MLX** | **100.5** | **2.8x** |
+
+![Qwen comparison](assets/qwen-comparison-chart.png)
 
 **4-bit quantized**
 
 | Framework | Qwen3.5-4B tok/s | Speedup |
 |---|---:|---:|
 | llama.cpp (Q4_K_M) | 76.4 | 1.0x |
-| MLX | 119.4 | 1.6x |
+| MLX-LM | 119.4 | 1.6x |
 | **DFlash + MLX** | **161.9** | **2.1x** |
 
 > Measured on a MacBook Pro M4 Max (36 GB). Absolute numbers vary by chip: the gains are what matter.
+
+## What The Speedups Mean
+
+The Qwen3.5-4B DFlash checkpoint is a **b16 draft**: it is trained to propose a
+16-token block. The upstream model card reports up to **3.7x** exact speedup for
+Qwen3.5-4B on NVIDIA B200 with SGLang/vLLM and FlashAttention. The larger
+Qwen3-8B b16 checkpoint reports higher exact speedups, but that is a different
+target model, a larger 1B drafter, and a CUDA serving stack.
+
+For the 4B Mac path, exact DFlash should be evaluated against the same target
+model and precision. Oversized blocks can show raw throughput, but they do not
+represent lossless speculative decoding.
 
 ## Raw Speed Mode
 
@@ -37,6 +54,20 @@ python3 scripts/run_dflash_mlx.py \
 ```
 
 This trusts oversized DFlash draft blocks instead of checking the accepted prefix. It is not lossless and should not be used as a quality benchmark, but it shows the hardware ceiling: **998 tok/s generation, 895 tok/s end-to-end** on the same M4 Max run, about **8.4x faster than plain 4-bit MLX** in our logs.
+
+You can verify why this is not exact with:
+
+```bash
+python3 scripts/diagnose_dflash_acceptance.py \
+  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
+  --draft-model z-lab/Qwen3.5-4B-DFlash \
+  --speculative-tokens 512
+```
+
+On the functional-equation prompt, the forced 512-token block accepted only the
+first input token before mismatch. That means the first drafted suffix token was
+already not the target model's next token, so exact speculative decoding must
+stop and resynchronize instead of accepting the remaining 511 drafted tokens.
 
 ## Quick Start
 
@@ -68,6 +99,9 @@ The upstream [DFlash paper](https://arxiv.org/abs/2602.06036) targets CUDA. Gett
 |---|---|---|
 | `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Stable |
 | `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` | Stable |
+| `mlx-community/Qwen3-4B-8bit` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental |
+| `mlx-community/Qwen3-4B-4bit` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental |
+| `mlx-community/Qwen3-4B-bf16` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental |
 
 Upstream DFlash checkpoints exist for Llama 3.1, Qwen3 Coder, Kimi-K2.5, and more: see the [HuggingFace collection](https://huggingface.co/collections/z-lab/dflash). Adding MLX adapter support for new families is a straightforward contribution.
 
@@ -94,7 +128,9 @@ scripts/
   mlx_dflash_draft.py        # DFlash draft model (MLX)
   mlx_dflash_adapters.py     # Model-family adapters (hidden state hooks, cache rollback)
   benchmark_mlx.py           # Plain MLX baseline benchmark
+  diagnose_dflash_acceptance.py # Inspect exact acceptance for one draft block
   generate_benchmark_chart.py # Regenerate the chart above
+  generate_qwen_comparison_chart.py # Regenerate the Qwen comparison chart
 benchmarks/
   metrics_history.csv         # Tracked benchmark history
 dflash/                       # Upstream DFlash package (CUDA path)
