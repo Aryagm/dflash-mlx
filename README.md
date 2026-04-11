@@ -8,13 +8,15 @@ https://github.com/user-attachments/assets/13411079-7ffd-4f3f-a3cd-fdf3dd44a537
 
 ## Supported Models
 
+Today, `dflash-mlx` is focused on Qwen3.5-4B. Other DFlash checkpoints exist upstream, but each target family needs an MLX adapter before it can be exact on Mac.
+
 | Target Model | Draft Model | Status |
 |---|---|---|
-| `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Stable |
-| `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` | Stable |
-| `mlx-community/Qwen3-4B-{bf16,8bit,4bit}` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental |
+| `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Supported |
+| `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` | Supported |
+| `mlx-community/Qwen3-4B-{bf16,8bit,4bit}` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental adapter |
 
-Upstream DFlash checkpoints exist for Llama 3.1, Qwen3 Coder, Kimi-K2.5, and more in the [Hugging Face collection](https://huggingface.co/collections/z-lab/dflash).
+Upstream DFlash checkpoints exist for Llama 3.1, Qwen3 Coder, Kimi-K2.5, GPT-OSS, and more in the [Hugging Face collection](https://huggingface.co/collections/z-lab/dflash). Support for more Mac/MLX target families is planned; see [ADDING_MODELS.md](ADDING_MODELS.md) if you want to add one.
 
 ## Installation
 

@@ -7,6 +7,8 @@
 
 The draft model predicts a block. The target model verifies that block and returns the hidden states needed to condition the next draft.
 
+Current exact support is centered on Qwen3.5-4B. Other upstream DFlash models are not automatically supported until their MLX target family has an adapter and exactness validation.
+
 ## 1. Check the Pair
 
 Pick a pair from the upstream DFlash model list:
