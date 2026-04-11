@@ -77,6 +77,7 @@ uv run python -m py_compile dflash_mlx/*.py
 ```
 
 New model families need an adapter in `dflash_mlx/adapters.py`.
+See [ADDING_MODELS.md](ADDING_MODELS.md) for the model support checklist.
 
 ## Citation
 
