@@ -17,7 +17,7 @@ from mlx_lm.models.gated_delta import (
     gated_delta_ops,
 )
 
-from prepare_custom_mlx_model import prepare_custom_model
+from .model_prep import prepare_custom_model
 
 
 def resolve_model_path(path_or_repo: str) -> Path:
@@ -716,6 +716,10 @@ ADAPTERS: dict[str, type[MLXTargetAdapter]] = {
 }
 
 
+def adapter_for_model_type(model_type: str) -> type[MLXTargetAdapter] | None:
+    return ADAPTERS.get(model_type)
+
+
 @dataclass
 class LoadedTargetModel:
     requested_model: str
@@ -817,7 +821,7 @@ def load_target_model(path_or_repo: str) -> LoadedTargetModel:
     base_path = resolve_model_path(path_or_repo)
     config = json.loads((base_path / "config.json").read_text())
     model_type = config.get("model_type")
-    adapter_cls = ADAPTERS.get(model_type)
+    adapter_cls = adapter_for_model_type(model_type)
     if adapter_cls is None:
         raise NotImplementedError(
             f"No MLX DFlash adapter registered for model_type={model_type!r}"

@@ -5,8 +5,8 @@ from typing import Any
 
 import mlx.core as mx
 
-from mlx_dflash_adapters import LoadedTargetModel
-from mlx_dflash_draft import DFlashDraftModel
+from .adapters import LoadedTargetModel
+from .draft import DFlashDraftModel
 
 
 def sample_tokens(logits: mx.array, temperature: float) -> mx.array:
@@ -22,6 +22,10 @@ def sample_tokens(logits: mx.array, temperature: float) -> mx.array:
 def trim_draft_cache(cache: list[Any], num_tokens: int) -> None:
     for layer_cache in cache:
         layer_cache.trim(num_tokens)
+
+
+def generated_token_count(output_tokens: list[int], prompt_len: int) -> int:
+    return max(len(output_tokens) - prompt_len, 0)
 
 
 def longest_prefix_match(draft_tokens: list[int], verifier_tokens: list[int]) -> int:
@@ -394,7 +398,7 @@ def dflash_generate(
 
     decode_time = time.perf_counter() - decode_start
     output_tokens = output_tokens[:total_max_tokens]
-    generated_tokens = max(len(output_tokens) - prompt_len, 0)
+    generated_tokens = generated_token_count(output_tokens, prompt_len)
     total_time = prefill_time + decode_time
 
     metrics = {

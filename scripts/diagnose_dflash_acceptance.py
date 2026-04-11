@@ -2,15 +2,18 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import mlx.core as mx
 from mlx_lm.generate import wired_limit
 
-from mlx_dflash_adapters import load_target_model
-from mlx_dflash_draft import load_draft_model
-from mlx_dflash_runtime import longest_prefix_match, sample_tokens
+from dflash_mlx.adapters import load_target_model
+from dflash_mlx.draft import load_draft_model
+from dflash_mlx.runtime import longest_prefix_match, sample_tokens
 
 
 def parse_args() -> argparse.Namespace:

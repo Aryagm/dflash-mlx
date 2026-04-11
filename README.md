@@ -1,8 +1,39 @@
 # dflash-mlx
 
-Lossless speculative decoding on Apple Silicon. Output is identical to the target model, just faster.
+Lossless DFlash speculative decoding for Apple Silicon. Same target-model output, fewer target forward passes, higher local throughput.
 
 https://github.com/user-attachments/assets/13411079-7ffd-4f3f-a3cd-fdf3dd44a537
+
+## Why It Matters
+
+- **Exact output**: the target model verifies every draft block and accepts only the longest matching prefix.
+- **Native Mac path**: the runtime is built on MLX and keeps the draft/verify loop on Apple Silicon.
+- **Real speedups**: Qwen3.5-4B hits 100.5 tok/s in bf16 and 161.9 tok/s in 4-bit on an M4 Max 36 GB run.
+
+## Quick Start
+
+```bash
+git clone https://github.com/aryagm/dflash-mlx.git
+cd dflash-mlx
+uv sync
+
+uv run dflash-mlx \
+  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
+  --draft-model z-lab/Qwen3.5-4B-DFlash \
+  --max-new-tokens 128
+```
+
+For the plain MLX-LM baseline:
+
+```bash
+uv run dflash-mlx-bench \
+  --model mlx-community/Qwen3.5-4B-MLX-4bit \
+  --prompt-file prompts/functional_equation.txt \
+  --max-new-tokens 128 \
+  --warmup-prompts 0
+```
+
+## Benchmarks
 
 **Qwen3.5-4B bf16** on MacBook Pro M4 Max, 36 GB
 
@@ -11,8 +42,6 @@ https://github.com/user-attachments/assets/13411079-7ffd-4f3f-a3cd-fdf3dd44a537
 | llama.cpp | 35.6 | 1.0x |
 | MLX-LM | 40.6 | 1.1x |
 | **DFlash + MLX** | **100.5** | **2.8x** |
-
-https://github.com/user-attachments/assets/b0b8f4ed-d41d-498e-8d39-475437fef9ff
 
 **Qwen3.5-4B 4-bit** on MacBook Pro M4 Max, 36 GB
 
@@ -24,36 +53,9 @@ https://github.com/user-attachments/assets/b0b8f4ed-d41d-498e-8d39-475437fef9ff
 
 ![Benchmarks](assets/benchmark-chart.png)
 
-> Absolute numbers vary by chip. The speedup ratios are what matter.
+BF16 is the cleanest exact speedup story. 4-bit is the fastest absolute throughput story. Absolute numbers vary by chip; the speedup ratios are the useful comparison.
 
-## Quick Start
-
-```bash
-git clone https://github.com/aryagm/dflash-mlx.git
-cd dflash-mlx
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e . && pip install mlx mlx-lm
-
-python3 scripts/run_dflash_mlx.py \
-  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
-  --draft-model z-lab/Qwen3.5-4B-DFlash \
-  --max-new-tokens 128
-```
-
-## How It Works
-
-[DFlash](https://arxiv.org/abs/2602.06036) trains a small block-diffusion model to propose multiple tokens at once. The target model verifies them in a single forward pass and accepts the longest correct prefix. You get the exact same output, fewer forward passes, higher throughput.
-
-The original DFlash targets CUDA. This project is a native MLX port for Apple Silicon.
-
-## What We Had to Build
-
-MLX has no speculative decoding primitives. Everything below had to be written from scratch:
-
-- **Draft-then-verify loop** in pure MLX, running entirely on the Metal GPU: proposal generation, batched verification, token acceptance, and KV cache management in one tight loop.
-- **Hidden state extraction** from the target model's intermediate layers. DFlash's drafter needs internal representations, not just logits. We hook into the forward pass without breaking the inference path or cache.
-- **KV cache rollback** when the target rejects a proposed token. Qwen3.5 uses hybrid sliding-window + global attention, so each layer type needs different rollback logic.
-- **Pluggable model adapters** so adding a new architecture (Llama, Qwen, etc.) doesn't require touching the core decode loop.
+See [docs/benchmarks.md](docs/benchmarks.md) for metric definitions, benchmark rules, and why `accept-all` is not lossless.
 
 ## Supported Models
 
@@ -63,35 +65,30 @@ MLX has no speculative decoding primitives. Everything below had to be written f
 | `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` | Stable |
 | `mlx-community/Qwen3-4B-{bf16,8bit,4bit}` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental |
 
-Upstream DFlash checkpoints exist for Llama 3.1, Qwen3 Coder, Kimi-K2.5, and more ([HuggingFace collection](https://huggingface.co/collections/z-lab/dflash)). Adding a new model family is a single adapter file.
+Upstream DFlash checkpoints exist for Llama 3.1, Qwen3 Coder, Kimi-K2.5, and more in the [Hugging Face collection](https://huggingface.co/collections/z-lab/dflash). New model families need an adapter in `dflash_mlx/adapters.py`.
 
-## Benchmarking
+## Project Layout
 
-```bash
-# DFlash
-python3 scripts/run_dflash_mlx.py \
-  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
-  --max-new-tokens 128 --warmup-runs 1
+- `dflash_mlx/`: public MLX runtime package and CLI implementations.
+- `scripts/`: thin public wrappers and chart generation scripts.
+- `docs/`: architecture and benchmark details.
+- `tools/`: demo/video/capture utilities, not required for runtime work.
+- `experiments/`: older prototypes kept for reference.
+- `assets/`: generated charts, captures, and demo videos.
 
-# Plain MLX baseline
-python3 scripts/benchmark_mlx.py
-```
-
-Results are logged to [`benchmarks/metrics_history.csv`](benchmarks/metrics_history.csv) with full reproducibility metadata.
-
-## Roadmap
-
-- [ ] More model families (Llama 3.1, Qwen3-Coder)
-- [ ] Streaming API: yield tokens as they're accepted
-- [ ] Python library interface: importable `dflash.generate()`
-- [ ] Metal kernel optimizations for the verify step
-- [ ] M1/M2/M3/M4 Pro/Max/Ultra benchmark matrix
+See [docs/architecture.md](docs/architecture.md) for the draft/verify/cache pipeline.
 
 ## Contributing
 
-1. **New model adapters**: each family needs an adapter in `scripts/mlx_dflash_adapters.py`. The Qwen3.5 adapter is a good reference.
-2. **Benchmark results**: run on your Mac and open a PR.
-3. **Bug reports**: issues with specific hardware or model configs.
+Use `uv` for setup and checks:
+
+```bash
+uv sync --extra dev
+uv run --extra dev pytest
+uv run --extra dev python -m py_compile dflash_mlx/*.py scripts/*.py tools/*.py experiments/*.py
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for smoke tests, exactness rules, adapter requirements, and benchmark standards.
 
 ## Citation
 

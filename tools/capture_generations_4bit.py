@@ -141,12 +141,12 @@ def capture_dflash_4bit():
     """Capture DFlash + MLX 4-bit generation."""
     print("=== Capturing DFlash + MLX 4-bit ===")
     import sys
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     import mlx.core as mx
-    from mlx_dflash_adapters import load_target_model
-    from mlx_dflash_draft import load_draft_model
-    from mlx_dflash_runtime import dflash_generate
+    from dflash_mlx.adapters import load_target_model
+    from dflash_mlx.draft import load_draft_model
+    from dflash_mlx.runtime import dflash_generate
 
     loaded = load_target_model("mlx-community/Qwen3.5-4B-MLX-4bit")
     tokenizer = loaded.tokenizer

@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model-file-source",
         type=Path,
-        default=REPO_ROOT / "scripts" / "custom_qwen35_dflash_model.py",
+        default=Path(__file__).with_name("custom_qwen35_model.py"),
         help="Custom model Python file to copy into the output directory.",
     )
     parser.add_argument(
@@ -57,7 +57,7 @@ def default_output_dir(source_repo: str) -> Path:
 def prepare_custom_model(
     source_repo: str,
     output_dir: Path | None = None,
-    model_file_source: Path = REPO_ROOT / "scripts" / "custom_qwen35_dflash_model.py",
+    model_file_source: Path = Path(__file__).with_name("custom_qwen35_model.py"),
     model_file_name: str = "custom_qwen35_dflash_model.py",
 ) -> Path:
     source_dir = resolve_source(source_repo)

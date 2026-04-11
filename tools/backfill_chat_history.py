@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from pathlib import Path
 
-from benchmark_history import DEFAULT_HISTORY_PATH, append_rows
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from dflash_mlx.history import DEFAULT_HISTORY_PATH, append_rows
 
 
 BACKFILL_ROWS = [

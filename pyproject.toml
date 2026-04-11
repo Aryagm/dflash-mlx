@@ -1,29 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "dflash"
+name = "dflash-mlx"
 version = "0.1.0"
-description = "DFlash: Block Diffusion for Flash Speculative Decoding"
+description = "DFlash speculative decoding on Apple Silicon with MLX"
 requires-python = ">=3.10"
 dependencies = [
-    "torch",
-    "transformers==4.57.1",
-    "accelerate",
-    "rich",
-    "packaging",
-    "ninja",
-    "loguru",
-    "numpy",
-    "tqdm",
+    "mlx",
+    "mlx-lm",
+    "huggingface-hub",
     "datasets",
-    "requests",
+    "numpy",
 ]
+
+[project.scripts]
+dflash-mlx = "dflash_mlx.cli:main"
+dflash-mlx-bench = "dflash_mlx.benchmark_cli:main"
+dflash-mlx-prepare-model = "dflash_mlx.model_prep:main"
 
 [tool.setuptools.packages.find]
-include = ["dflash*"]
+include = ["dflash_mlx*"]
 
 [project.optional-dependencies]
-sglang = [
-    "sglang[all] @ git+https://github.com/sgl-project/sglang.git@refs/pull/20547/head#subdirectory=python",
+charts = [
+    "matplotlib",
 ]
-vllm = [
-    "vllm",
+video = [
+    "opencv-python",
+    "pillow",
+]
+dev = [
+    "pytest",
+    "matplotlib",
 ]
