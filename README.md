@@ -38,7 +38,7 @@ Plain MLX-LM baseline:
 ```bash
 uv run dflash-mlx-bench \
   --model mlx-community/Qwen3.5-4B-MLX-4bit \
-  --prompt-file prompts/functional_equation.txt \
+  --prompt "How many positive whole-number divisors does 196 have?" \
   --max-new-tokens 128 \
   --warmup-prompts 0
 ```

@@ -18,6 +18,15 @@ from .draft import load_draft_model, maybe_quantize_draft_model
 from .runtime import dflash_generate
 
 
+DEFAULT_PROMPT = (
+    "The function $f$ satisfies the functional equation \\[f(x) + f(y) = "
+    "f(x + y - xy)\\] for all real numbers $x$ and $y$. If $f(1) = 1$, "
+    "then find all integers $n$ such that $f(n) = n$. Enter all your "
+    "integers, separated by commas.\n\nPlease reason step by step, and put "
+    "your final answer within \\boxed{}."
+)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="MLX-first DFlash runner for Apple Silicon."
@@ -33,9 +42,16 @@ def parse_args() -> argparse.Namespace:
         help="Hugging Face repo or local path for the DFlash draft weights.",
     )
     parser.add_argument(
+        "--prompt",
+        type=str,
+        default=None,
+        help="Prompt text to run. Uses the built-in benchmark prompt if omitted.",
+    )
+    parser.add_argument(
         "--prompt-file",
         type=Path,
-        default=Path("prompts/functional_equation.txt"),
+        default=None,
+        help="Read prompt text from a file.",
     )
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float, default=0.0)
@@ -103,13 +119,19 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.prompt is not None and args.prompt_file is not None:
+        raise SystemExit("Use either --prompt or --prompt-file, not both.")
     mx.random.seed(args.seed)
     history_meta = (
         {}
         if args.no_history
         else run_metadata("dflash-mlx", experiment_tag=args.experiment_tag)
     )
-    prompt_text = args.prompt_file.read_text()
+    prompt_text = (
+        args.prompt_file.read_text()
+        if args.prompt_file is not None
+        else (args.prompt or DEFAULT_PROMPT)
+    )
 
     target = load_target_model(args.target_model)
     print(f"[load target] {target.resolved_model_path}")
@@ -233,7 +255,8 @@ def main() -> None:
                 args.draft_quant_group_size if args.draft_quant_bits is not None else ""
             ),
             "draft_attention_mask": draft_attention_mask,
-            "prompt_file": str(args.prompt_file),
+            "prompt_file": str(args.prompt_file or ""),
+            "prompt_source": "prompt_file" if args.prompt_file is not None else "prompt",
             "prompt_sha256": prompt_sha256(prompt_text),
             "max_new_tokens": args.max_new_tokens,
             "temperature": args.temperature,

@@ -1,3 +1,0 @@
-The function $f$ satisfies the functional equation \[f(x) + f(y) = f(x + y - xy)\] for all real numbers $x$ and $y$. If $f(1) = 1$, then find all integers $n$ such that $f(n) = n$. Enter all your integers, separated by commas.
-
-Please reason step by step, and put your final answer within \boxed{}.
