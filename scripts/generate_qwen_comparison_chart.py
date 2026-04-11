@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 # Single-prompt generation throughput, 128 generated tokens, MacBook Pro M4 Max.
 # llama.cpp: unsloth/Qwen3.5-4B-GGUF, unquantized GGUF, llama-cli, -c 4096.
-# MLX values come from benchmarks/metrics_history.csv exact warm runs.
+# MLX values come from benchmarks/summary.csv exact warm runs.
 entries = [
     ("llama.cpp", 35.6, "#3d4460"),
     ("MLX-LM", 40.6, "#3d4460"),

@@ -1,0 +1,7 @@
+date_utc,hardware,prompt_file,max_new_tokens,temperature,method,backend,model,draft_model,precision,lossless,generation_tps,end_to_end_tps,notes
+2026-04-11,"MacBook Pro M4 Max, 36 GB",prompts/functional_equation.txt,128,0.0,llama.cpp,llama.cpp,unsloth/Qwen3.5-4B-GGUF,,bf16,true,35.6,,"Unquantized GGUF baseline used in README Qwen chart."
+2026-04-11,"MacBook Pro M4 Max, 36 GB",prompts/functional_equation.txt,128,0.0,MLX-LM,mlx-lm,mlx-community/Qwen3.5-4B-MLX-bf16,,bf16,true,40.6,37.03,"Plain MLX-LM BF16 baseline."
+2026-04-11,"MacBook Pro M4 Max, 36 GB",prompts/functional_equation.txt,128,0.0,DFlash + MLX,dflash-mlx,mlx-community/Qwen3.5-4B-MLX-bf16,z-lab/Qwen3.5-4B-DFlash,bf16,true,100.5,92.73,"Exact DFlash BF16 run."
+2026-04-11,"MacBook Pro M4 Max, 36 GB",prompts/functional_equation.txt,128,0.0,llama.cpp Q4_K_M,llama.cpp,unsloth/Qwen3.5-4B-GGUF,,4-bit,true,76.4,,"Q4_K_M llama.cpp baseline."
+2026-04-11,"MacBook Pro M4 Max, 36 GB",prompts/functional_equation.txt,128,0.0,MLX-LM,mlx-lm,mlx-community/Qwen3.5-4B-MLX-4bit,,4-bit,true,119.4,97.17,"Plain MLX-LM 4-bit baseline."
+2026-04-11,"MacBook Pro M4 Max, 36 GB",prompts/functional_equation.txt,128,0.0,DFlash + MLX,dflash-mlx,mlx-community/Qwen3.5-4B-MLX-4bit,z-lab/Qwen3.5-4B-DFlash,4-bit,true,161.9,142.42,"Exact DFlash 4-bit run."

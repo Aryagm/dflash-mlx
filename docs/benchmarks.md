@@ -2,6 +2,8 @@
 
 README benchmark numbers use the functional-equation prompt in `prompts/functional_equation.txt`, temperature 0, and 128 generated tokens on a MacBook Pro M4 Max with 36 GB memory.
 
+The public benchmark table is `benchmarks/summary.csv`. Detailed local benchmark runs append to `benchmarks/metrics_history.csv`, which is intentionally git-ignored because it includes noisy development metadata such as git status and experiment tags.
+
 ## Metrics
 
 **Generation tok/s** measures output-token throughput after prefill. This is the clearest decode-loop metric because it focuses on the repeated autoregressive or speculative generation phase.
@@ -54,4 +56,4 @@ uv run dflash-mlx-bench \
   --warmup-prompts 0
 ```
 
-Results append to `benchmarks/metrics_history.csv` unless `--no-history` is passed.
+Results append to the local ignored `benchmarks/metrics_history.csv` unless `--no-history` is passed. Update `benchmarks/summary.csv` only when promoting a clean public benchmark result.
