@@ -2,7 +2,7 @@
 
 Lossless speculative decoding on Apple Silicon. Output is identical to the target model, just faster.
 
-https://github.com/user-attachments/assets/fee66404-9d56-4417-82e8-674ee9d4e483
+https://github.com/user-attachments/assets/13411079-7ffd-4f3f-a3cd-fdf3dd44a537
 
 **Qwen3.5-4B bf16** on MacBook Pro M4 Max, 36 GB
 
@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/fee66404-9d56-4417-82e8-674ee9d4e483
 | MLX-LM | 40.6 | 1.1x |
 | **DFlash + MLX** | **100.5** | **2.8x** |
 
-https://github.com/user-attachments/assets/47f61087-5527-4531-9e1c-e3752461a1b1
+https://github.com/user-attachments/assets/b0b8f4ed-d41d-498e-8d39-475437fef9ff
 
 **Qwen3.5-4B 4-bit** on MacBook Pro M4 Max, 36 GB
 

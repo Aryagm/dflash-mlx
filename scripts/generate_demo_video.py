@@ -11,10 +11,10 @@ from PIL import Image, ImageDraw, ImageFont
 # --- Config ---
 OUTPUT = Path(__file__).resolve().parent.parent / "assets" / "demo-comparison.mp4"
 FPS = 30
-DURATION_S = 27  # total video duration (llama.cpp needs ~24s)
+DURATION_S = 27
 WIDTH, HEIGHT = 1920, 1080
 
-# Colors (BGR for OpenCV, RGB for Pillow)
+# Colors
 BG = (13, 17, 23)
 PANEL_BG = (22, 27, 34)
 BORDER = (48, 54, 61)
@@ -24,19 +24,19 @@ TEXT_NORMAL = (200, 210, 220)
 TEXT_BRIGHT = (240, 245, 250)
 GREEN = (80, 220, 120)
 BLUE = (90, 160, 255)
-YELLOW = (240, 180, 40)
+RED = (255, 80, 80)
+YELLOW = (255, 220, 60)
 
 # Fonts
 FONT_MONO = "/System/Library/Fonts/Menlo.ttc"
-FONT_LABEL = ImageFont.truetype(FONT_MONO, 15)
-FONT_TEXT = ImageFont.truetype(FONT_MONO, 14)
-FONT_SPEED = ImageFont.truetype(FONT_MONO, 48)
-FONT_SPEED_UNIT = ImageFont.truetype(FONT_MONO, 20)
-FONT_PROMPT = ImageFont.truetype(FONT_MONO, 13)
-FONT_TITLE = ImageFont.truetype(FONT_MONO, 13)
-FONT_TAG = ImageFont.truetype(FONT_MONO, 14)
-FONT_TIMER = ImageFont.truetype(FONT_MONO, 13)
-FONT_DONE = ImageFont.truetype(FONT_MONO, 12)
+FONT_HEADER = ImageFont.truetype(FONT_MONO, 18)
+FONT_MODEL = ImageFont.truetype(FONT_MONO, 14)
+FONT_TEXT = ImageFont.truetype(FONT_MONO, 15)
+FONT_PROMPT = ImageFont.truetype(FONT_MONO, 14)
+FONT_TITLE = ImageFont.truetype(FONT_MONO, 14)
+FONT_TIMER = ImageFont.truetype(FONT_MONO, 15)
+FONT_SPEED = ImageFont.truetype(FONT_MONO, 60)
+FONT_TAG = ImageFont.truetype(FONT_MONO, 26)
 
 # Load real captured outputs
 import json
@@ -53,33 +53,39 @@ dflash_text, _ = load_capture("dflash_bf16.json")
 
 # Peak TPS from benchmarks (plugged in, cool machine, M4 Max 36 GB)
 FRAMEWORKS = [
-    {"name": "llama.cpp", "tps": 35.6, "color": TEXT_DIM, "tag": None, "tag_color": None,
-     "text": llama_text},
-    {"name": "MLX-LM", "tps": 40.6, "color": TEXT_DIM, "tag": None, "tag_color": None,
-     "text": mlx_text},
-    {"name": "DFlash + MLX", "tps": 100.5, "color": BLUE, "tag": "LOSSLESS", "tag_color": GREEN,
-     "text": dflash_text},
+    {"name": "llama.cpp", "tps": 35.6, "speed_color": RED,
+     "text": llama_text, "model_label": "Qwen3.5-4B · bf16",
+     "header_color": (60, 30, 30), "header_border": (120, 50, 50),
+     "tag": None, "tag_color": None},
+    {"name": "MLX-LM", "tps": 40.6, "speed_color": YELLOW,
+     "text": mlx_text, "model_label": "Qwen3.5-4B · bf16",
+     "header_color": (50, 45, 20), "header_border": (100, 90, 30),
+     "tag": None, "tag_color": None},
+    {"name": "DFlash + MLX", "tps": 100.5, "speed_color": GREEN,
+     "text": dflash_text, "model_label": "Qwen3.5-4B · bf16",
+     "header_color": (25, 50, 35), "header_border": (50, 120, 70),
+     "tag": "LOSSLESS", "tag_color": GREEN},
 ]
 
 PROMPT_TEXT = (
-    "The function f satisfies f(x) + f(y) = f(x + y) - xy - 1 "
-    "for all real numbers x and y. If f(1) = 1, find all integers n "
-    "such that f(n) = n."
+    "The function $f$ satisfies the functional equation f(x) + f(y) = f(x + y) - xy - 1 "
+    "for all real numbers $x$ and $y$. If $f(1) = 1$, then find all integers $n$ "
+    "such that $f(n) = n$. Enter all such integers, separated by commas. "
+    "Please reason step by step, and put your final answer within \\boxed{}."
 )
 
 NUM_PANELS = len(FRAMEWORKS)
 PANEL_W = (WIDTH - 20 * (NUM_PANELS + 1)) // NUM_PANELS
-PROMPT_H = 60
-PANEL_TOP = PROMPT_H + 30
-PANEL_H = HEIGHT - PANEL_TOP - 20
-HEADER_H = 42  # within panel, for name + model + timer
-TEXT_AREA_TOP = HEADER_H + 10  # within panel, below header
-TEXT_AREA_BOTTOM = 90  # within panel, above speed display
+PROMPT_H = 72
+PANEL_TOP = PROMPT_H + 18
+PANEL_H = HEIGHT - PANEL_TOP - 12
+HEADER_H = 52
+TEXT_AREA_TOP = HEADER_H + 6
 
 # Precompute finish time for each framework
 for fw in FRAMEWORKS:
-    total_tokens = len(fw["text"]) / 4  # ~4 chars per token
-    fw["finish_time"] = 0.5 + total_tokens / fw["tps"]  # 0.5s prefill
+    total_tokens = len(fw["text"]) / 4
+    fw["finish_time"] = 0.5 + total_tokens / fw["tps"]
 
 
 def wrap_text(text: str, chars_per_line: int = 38) -> list[str]:
@@ -94,18 +100,20 @@ def wrap_text(text: str, chars_per_line: int = 38) -> list[str]:
 
 
 def draw_frame(t: float) -> np.ndarray:
-    """Draw a single frame at time t seconds."""
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(img)
 
-    # Prompt bar at top
+    # Prompt bar at top (centered label)
     draw.rounded_rectangle(
-        [10, 10, WIDTH - 10, PROMPT_H + 10],
-        radius=8, fill=PROMPT_BG, outline=BORDER
+        [10, 8, WIDTH - 10, PROMPT_H + 8],
+        radius=6, fill=PROMPT_BG, outline=BORDER
     )
-    draw.text((20, 16), "Input Prompt", fill=TEXT_DIM, font=FONT_TITLE)
-    prompt_wrapped = textwrap.shorten(PROMPT_TEXT, width=140, placeholder="...")
-    draw.text((20, 36), prompt_wrapped, fill=TEXT_NORMAL, font=FONT_PROMPT)
+    label = "Input Prompt"
+    draw.text((24, 12), label, fill=TEXT_DIM, font=FONT_TITLE)
+    # Wrap the full prompt across two lines
+    prompt_lines = textwrap.wrap(PROMPT_TEXT, width=220)
+    for j, pline in enumerate(prompt_lines[:3]):
+        draw.text((24, 30 + j * 18), pline, fill=TEXT_NORMAL, font=FONT_PROMPT)
 
     for i, fw in enumerate(FRAMEWORKS):
         x = 20 + i * (PANEL_W + 20)
@@ -114,7 +122,7 @@ def draw_frame(t: float) -> np.ndarray:
         # Panel background
         draw.rounded_rectangle(
             [x, y, x + PANEL_W, y + PANEL_H],
-            radius=8, fill=PANEL_BG, outline=BORDER
+            radius=6, fill=PANEL_BG, outline=BORDER
         )
 
         tps = fw["tps"]
@@ -124,116 +132,128 @@ def draw_frame(t: float) -> np.ndarray:
         finished = total_chars >= len(fw["text"])
         finish_time = fw["finish_time"]
 
-        # Header line 1: framework name + tag (inline) + timer
-        label_color = fw["color"]
-        draw.text((x + 12, y + 8), fw["name"], fill=label_color, font=FONT_LABEL)
+        # --- Colored header bar ---
+        draw.rounded_rectangle(
+            [x + 1, y + 1, x + PANEL_W - 1, y + HEADER_H],
+            radius=5, fill=fw["header_color"]
+        )
+        draw.line([(x + 6, y + 1), (x + PANEL_W - 6, y + 1)],
+                  fill=fw["header_border"], width=2)
 
-        # Tag (e.g. LOSSLESS) - inline after the name
-        if fw["tag"]:
-            tag_text = fw["tag"]
-            name_bbox = draw.textbbox((x + 12, y + 8), fw["name"], font=FONT_LABEL)
-            tag_x = name_bbox[2] + 10
-            tag_bbox = draw.textbbox((0, 0), tag_text, font=FONT_DONE)
-            tag_w = tag_bbox[2] - tag_bbox[0] + 12
-            tag_h = 17
-            tag_y = y + 10
-            draw.rounded_rectangle(
-                [tag_x, tag_y, tag_x + tag_w, tag_y + tag_h],
-                radius=4, fill=(30, 60, 40), outline=fw["tag_color"]
-            )
-            draw.text((tag_x + 6, tag_y + 2), tag_text, fill=fw["tag_color"], font=FONT_DONE)
+        # Framework name (line 1)
+        draw.text((x + 12, y + 8), fw["name"], fill=TEXT_BRIGHT, font=FONT_HEADER)
 
-        # Timer (stops when generation finishes)
+        # Model label (line 2)
+        draw.text((x + 12, y + 30), fw["model_label"], fill=TEXT_DIM, font=FONT_MODEL)
+
+        # Timer on the right (vertically centered)
         elapsed_display = min(gen_t, finish_time - 0.5) if finished else gen_t
         if gen_t > 0:
-            timer_str = f"{elapsed_display:.1f}s"
+            timer_str = f"({elapsed_display:.1f}s)"
             timer_color = GREEN if finished else TEXT_DIM
             timer_bbox = draw.textbbox((0, 0), timer_str, font=FONT_TIMER)
             timer_w = timer_bbox[2] - timer_bbox[0]
             timer_x = x + PANEL_W - timer_w - 12
-            draw.text((timer_x, y + 10), timer_str, fill=timer_color, font=FONT_TIMER)
+            draw.text((timer_x, y + 18), timer_str, fill=timer_color, font=FONT_TIMER)
 
-        # Header line 2: model name
-        draw.text((x + 12, y + 30), "Qwen3.5-4B · bf16", fill=TEXT_DIM, font=FONT_PROMPT)
-
-        # Separator below header
-        draw.line([(x + 12, y + HEADER_H + 6), (x + PANEL_W - 12, y + HEADER_H + 6)],
-                  fill=BORDER, width=1)
-
-        # Allow wrapping: text repeats from top when viewport fills
-        chars_per_line = int(PANEL_W / 8.5)
+        # --- Text area ---
+        chars_per_line = int(PANEL_W / 9.0)
         fw_text = fw["text"]
         all_lines = wrap_text(fw_text, chars_per_line=chars_per_line)
-        max_lines = (PANEL_H - TEXT_AREA_TOP - TEXT_AREA_BOTTOM) // 18
+        max_lines = (PANEL_H - TEXT_AREA_TOP - 10) // 19
 
-        # Figure out how many wrapped lines correspond to total_chars generated
         char_count = 0
         total_lines_generated = 0
         for ln in all_lines:
-            line_chars = len(ln) + 1  # +1 for newline
+            line_chars = len(ln) + 1
             if char_count + line_chars > total_chars:
                 break
             char_count += line_chars
             total_lines_generated += 1
 
-        # Which "page" are we on?
         page = total_lines_generated // max_lines
         line_on_page = total_lines_generated % max_lines
-
-        # Get the lines for the current page
         page_start = page * max_lines
         visible_lines = all_lines[page_start:page_start + line_on_page]
 
-        # Draw
-        text_y = y + TEXT_AREA_TOP
+        text_y = y + TEXT_AREA_TOP + 4
         for line in visible_lines:
-            if text_y > y + PANEL_H - TEXT_AREA_BOTTOM:
+            if text_y > y + PANEL_H - 10:
                 break
             draw.text((x + 12, text_y), line, fill=TEXT_NORMAL, font=FONT_TEXT)
-            text_y += 18
+            text_y += 19
 
         # Blinking cursor
         if not finished:
             cursor_visible = int(t * 3) % 2 == 0
             if cursor_visible and visible_lines:
                 last_line = visible_lines[-1] if visible_lines else ""
-                cursor_x = x + 12 + len(last_line) * 8.4
-                cursor_y_pos = min(text_y - 18, y + PANEL_H - TEXT_AREA_BOTTOM - 18)
+                cursor_x = x + 12 + len(last_line) * 9.0
+                cursor_y_pos = min(text_y - 19, y + PANEL_H - 20)
                 draw.rectangle(
-                    [cursor_x, cursor_y_pos, cursor_x + 8, cursor_y_pos + 16],
+                    [cursor_x, cursor_y_pos, cursor_x + 9, cursor_y_pos + 17],
                     fill=TEXT_BRIGHT
                 )
 
-        # Speed display at bottom
-        speed_y = y + PANEL_H - 70
-        # Separator line
-        draw.line([(x + 12, speed_y - 8), (x + PANEL_W - 12, speed_y - 8)],
-                  fill=BORDER, width=1)
+        # --- Speed overlay (centered, on top of text with background) ---
+        if True:
+            speed_color = fw["speed_color"]
+            tps_str = f"{tps:.1f} TOK/S"
 
-        if gen_t > 0.2:
-            speed_color = fw["color"] if fw["color"] != TEXT_DIM else TEXT_NORMAL
-            tps_str = f"{tps:.1f}"
-            draw.text((x + 12, speed_y), tps_str, fill=speed_color, font=FONT_SPEED)
+            # Measure text sizes for centering
+            tps_bbox_size = draw.textbbox((0, 0), tps_str, font=FONT_SPEED)
+            tps_w = tps_bbox_size[2] - tps_bbox_size[0]
+            tps_h = tps_bbox_size[3] - tps_bbox_size[1]
 
-            # "tok/s" unit
-            tps_bbox = draw.textbbox((x + 12, speed_y), tps_str, font=FONT_SPEED)
-            draw.text((tps_bbox[2] + 8, speed_y + 24), "tok/s",
-                      fill=TEXT_DIM, font=FONT_SPEED_UNIT)
+            tag_text = None
+            if fw["tag"]:
+                tag_text = "DONE" if finished else fw["tag"]
+            elif finished:
+                tag_text = "DONE"
 
-            # DONE badge when finished
-            if finished:
-                done_text = "DONE"
-                done_bbox = draw.textbbox((0, 0), done_text, font=FONT_DONE)
-                done_w = done_bbox[2] - done_bbox[0] + 14
-                done_x = x + PANEL_W - done_w - 12
-                done_y = speed_y + 8
-                draw.rounded_rectangle(
-                    [done_x, done_y, done_x + done_w, done_y + 22],
-                    radius=4, fill=(30, 60, 40), outline=GREEN
-                )
-                draw.text((done_x + 7, done_y + 4), done_text, fill=GREEN, font=FONT_DONE)
+            tag_w, tag_h = 0, 0
+            if tag_text:
+                tag_bbox_size = draw.textbbox((0, 0), tag_text, font=FONT_TAG)
+                tag_w = tag_bbox_size[2] - tag_bbox_size[0]
+                tag_h = tag_bbox_size[3] - tag_bbox_size[1]
 
-    return np.array(img)[:, :, ::-1]  # RGB to BGR for OpenCV
+            # Total content height
+            gap = 14 if tag_text else 0
+            total_h = tps_h + gap + (tag_h if tag_text else 0)
+            content_w = max(tps_w, tag_w)
+
+            # Center on the whole page vertically
+            panel_center_x = x + PANEL_W // 2
+            panel_center_y = HEIGHT // 2
+
+            tps_x = panel_center_x - tps_w // 2
+            tps_y = panel_center_y - total_h // 2
+
+            # Background rect with padding
+            pad_x, pad_y = 20, 14
+            bg_left = panel_center_x - content_w // 2 - pad_x
+            bg_top = tps_y - pad_y
+            bg_right = panel_center_x + content_w // 2 + pad_x
+            bg_bottom = tps_y + total_h + pad_y
+
+            overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+            overlay_draw = ImageDraw.Draw(overlay)
+            overlay_draw.rounded_rectangle(
+                [bg_left, bg_top, bg_right, bg_bottom],
+                radius=10, fill=(13, 17, 23, 200)
+            )
+            img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+            draw = ImageDraw.Draw(img)
+
+            draw.text((tps_x, tps_y), tps_str, fill=speed_color, font=FONT_SPEED)
+
+            if tag_text:
+                tag_color = speed_color if fw["tag"] else GREEN
+                tag_x = panel_center_x - tag_w // 2
+                tag_y = tps_y + tps_h + gap
+                draw.text((tag_x, tag_y), tag_text, fill=tag_color, font=FONT_TAG)
+
+    return np.array(img)[:, :, ::-1]
 
 
 def main():
@@ -250,13 +270,11 @@ def main():
         if frame_idx % FPS == 0:
             print(f"  {int(t)}s / {DURATION_S}s")
 
-    # Hold final frame for 2 extra seconds
     for _ in range(FPS * 2):
         out.write(frame)
 
     out.release()
 
-    # Re-encode with ffmpeg for better compatibility
     final = OUTPUT.with_suffix(".final.mp4")
     import subprocess
     subprocess.run([
