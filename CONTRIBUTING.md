@@ -54,4 +54,4 @@ Register the adapter in `ADAPTERS`, then add a no-download unit test for `adapte
 
 Use the same prompt, output length, precision, and warmup policy when comparing methods. Report generation tok/s and end-to-end tok/s separately when possible.
 
-For README numbers, use the functional-equation prompt in `prompts/functional_equation.txt`, 128 generated tokens, temperature 0, and Mac hardware details. Do not commit raw `benchmarks/metrics_history.csv`; it is a local run log. Promote clean public numbers into `benchmarks/summary.csv`.
+For README numbers, use the functional-equation prompt in `prompts/functional_equation.txt`, 128 generated tokens, temperature 0, and Mac hardware details. `benchmarks/metrics_history.csv` is a curated command-generated run log; keep noisy scratch or reconstruction rows out of it. Promote clean public numbers into `benchmarks/summary.csv`.

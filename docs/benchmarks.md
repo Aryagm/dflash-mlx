@@ -2,7 +2,7 @@
 
 README benchmark numbers use the functional-equation prompt in `prompts/functional_equation.txt`, temperature 0, and 128 generated tokens on a MacBook Pro M4 Max with 36 GB memory.
 
-The public benchmark table is `benchmarks/summary.csv`. Detailed local benchmark runs append to `benchmarks/metrics_history.csv`, which is intentionally git-ignored because it includes noisy development metadata such as git status and experiment tags.
+The public benchmark table is `benchmarks/summary.csv`. Detailed benchmark runs append to `benchmarks/metrics_history.csv`, which is tracked as a curated run log. Chat-backfilled reconstruction rows are intentionally excluded.
 
 ## Metrics
 
@@ -56,4 +56,4 @@ uv run dflash-mlx-bench \
   --warmup-prompts 0
 ```
 
-Results append to the local ignored `benchmarks/metrics_history.csv` unless `--no-history` is passed. Update `benchmarks/summary.csv` only when promoting a clean public benchmark result.
+Results append to `benchmarks/metrics_history.csv` unless `--no-history` is passed. Update `benchmarks/summary.csv` only when promoting a clean public benchmark result.

@@ -1,7 +1,6 @@
 __pycache__/
 .DS_Store
 cache/
-benchmarks/metrics_history.csv
 *.egg-info/
 .venv*/
 .hf_modules/
