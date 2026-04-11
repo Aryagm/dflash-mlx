@@ -6,20 +6,15 @@ Lossless speculative decoding on Apple Silicon. **Same output as the target mode
 
 https://github.com/user-attachments/assets/13411079-7ffd-4f3f-a3cd-fdf3dd44a537
 
-**Qwen3.5-4B bf16** on M4 Max, 36 GB &mdash; **2.8x** faster than llama.cpp, **2.5x** faster than MLX-LM
+Qwen3.5-4B on MacBook Pro M4 Max, 36 GB:
 
-| | tok/s | speedup |
+| | tok/s | vs llama.cpp |
 |---|---:|---:|
+| **bf16** | | |
 | llama.cpp | 35.6 | 1.0x |
 | MLX-LM | 40.6 | 1.1x |
 | **DFlash + MLX** | **100.5** | **2.8x** |
-
-https://github.com/user-attachments/assets/b0b8f4ed-d41d-498e-8d39-475437fef9ff
-
-**Qwen3.5-4B 4-bit** on M4 Max, 36 GB &mdash; **2.1x** faster than llama.cpp, **1.4x** faster than MLX-LM
-
-| | tok/s | speedup |
-|---|---:|---:|
+| **4-bit** | | |
 | llama.cpp (Q4_K_M) | 76.4 | 1.0x |
 | MLX-LM | 119.4 | 1.6x |
 | **DFlash + MLX** | **161.9** | **2.1x** |
