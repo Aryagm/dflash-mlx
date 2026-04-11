@@ -274,6 +274,17 @@ class MLXTargetAdapter:
     ) -> tuple[mx.array, mx.array] | tuple[mx.array, mx.array, dict[int, dict[str, mx.array]]]:
         raise NotImplementedError
 
+    def forward_verifier_states(
+        self,
+        model,
+        inputs: mx.array,
+        cache: list[Any],
+        layer_ids: list[int],
+    ) -> tuple[mx.array, mx.array, dict[int, dict[str, mx.array]]]:
+        raise NotImplementedError(
+            f"{self.family} does not expose verifier states before the LM head."
+        )
+
     def forward_accept_all_block(
         self,
         model,
@@ -407,6 +418,28 @@ class Qwen35TargetAdapter(MLXTargetAdapter):
         if return_rollback_records:
             return logits, target_hidden, rollback_records
         return logits, target_hidden
+
+    def forward_verifier_states(
+        self,
+        model,
+        inputs: mx.array,
+        cache: list[Any],
+        layer_ids: list[int],
+    ) -> tuple[mx.array, mx.array, dict[int, dict[str, mx.array]]]:
+        if hasattr(model, "language_model") and hasattr(
+            model.language_model.model,
+            "forward_dflash",
+        ):
+            return model.language_model.model.forward_dflash(
+                inputs=inputs,
+                cache=cache,
+                layer_ids=layer_ids,
+                return_rollback_records=True,
+            )
+
+        raise NotImplementedError(
+            "Qwen3.5 lazy-logit verification requires the custom DFlash model fork."
+        )
 
     def forward_accept_all_block(
         self,
@@ -572,6 +605,19 @@ class LoadedTargetModel:
             cache,
             layer_ids,
             return_rollback_records=return_rollback_records,
+        )
+
+    def forward_verifier_states(
+        self,
+        inputs: mx.array,
+        cache: list[Any],
+        layer_ids: list[int],
+    ) -> tuple[mx.array, mx.array, dict[int, dict[str, mx.array]]]:
+        return self.adapter.forward_verifier_states(
+            self.model,
+            inputs,
+            cache,
+            layer_ids,
         )
 
     def forward_accept_all_block(

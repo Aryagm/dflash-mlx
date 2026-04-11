@@ -53,11 +53,19 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--verify-mode",
-        choices=["stream", "chunked", "parallel-replay", "accept-all"],
+        choices=[
+            "stream",
+            "chunked",
+            "parallel-replay",
+            "parallel-lazy-logits",
+            "accept-all",
+        ],
         default="parallel-replay",
         help=(
-            "Verifier strategy. 'accept-all' is experimental and inexact: it "
-            "trusts the full drafted block instead of checking the accepted prefix."
+            "Verifier strategy. 'parallel-lazy-logits' keeps exact prefix checks "
+            "but computes verifier logits in chunks. 'accept-all' is experimental "
+            "and inexact: it trusts the full drafted block instead of checking "
+            "the accepted prefix."
         ),
     )
     parser.add_argument("--verify-chunk-size", type=int, default=4)
@@ -170,7 +178,7 @@ def main() -> None:
         )
     print(f"Speculative tokens:       {metrics['speculative_tokens']}")
     print(f"Verify mode:              {args.verify_mode}")
-    if args.verify_mode == "chunked":
+    if args.verify_mode in {"chunked", "parallel-lazy-logits"}:
         print(f"Verify chunk size:        {args.verify_chunk_size}")
     print(f"Prompt tokens:            {metrics['num_input_tokens']}")
     print(f"Generated tokens:         {metrics['num_output_tokens']}")

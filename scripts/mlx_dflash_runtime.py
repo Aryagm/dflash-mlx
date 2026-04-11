@@ -120,6 +120,70 @@ def verify_block_parallel_replay(
     return accepted_inputs, posterior[matched], verifier_hidden[:, :accepted_inputs, :]
 
 
+def verify_block_parallel_lazy_logits(
+    target: LoadedTargetModel,
+    target_cache: list[Any],
+    block_tokens: list[int],
+    draft_block_size: int,
+    temperature: float,
+    layer_ids: list[int],
+    logit_chunk_size: int,
+) -> tuple[int, int, mx.array]:
+    norm_hidden_states, verifier_hidden, rollback_records = target.forward_verifier_states(
+        mx.array(block_tokens, dtype=mx.uint32)[None],
+        target_cache,
+        layer_ids,
+    )
+    mx.eval(norm_hidden_states, verifier_hidden)
+
+    matched = 0
+    accepted_inputs = draft_block_size
+    posterior_token: int | None = None
+    chunk_size = max(1, logit_chunk_size)
+
+    for chunk_start in range(0, draft_block_size, chunk_size):
+        chunk_end = min(chunk_start + chunk_size, draft_block_size)
+        logits_chunk = target.lm_head_logits(
+            norm_hidden_states[:, chunk_start:chunk_end, :]
+        )
+        mx.eval(logits_chunk)
+        posterior_chunk = sample_tokens(logits_chunk, temperature)[0].tolist()
+
+        for local_idx, token in enumerate(posterior_chunk):
+            pos = chunk_start + local_idx
+            if pos == draft_block_size - 1:
+                posterior_token = token
+                accepted_inputs = draft_block_size
+                break
+
+            if token == block_tokens[pos + 1]:
+                matched += 1
+                continue
+
+            posterior_token = token
+            accepted_inputs = matched + 1
+            break
+
+        if posterior_token is not None:
+            break
+
+    if posterior_token is None:
+        raise RuntimeError("Lazy-logit verifier failed to produce a posterior token.")
+
+    if accepted_inputs < draft_block_size:
+        rollback_tensors = flatten_rollback_tensors(rollback_records)
+        if rollback_tensors:
+            mx.eval(*rollback_tensors)
+        target.rewind_kv_caches(target_cache, draft_block_size - accepted_inputs)
+        target.rollback_linear_caches(
+            target_cache,
+            rollback_records,
+            accepted_inputs,
+        )
+
+    return accepted_inputs, posterior_token, verifier_hidden[:, :accepted_inputs, :]
+
+
 def verify_block_accept_all(
     target: LoadedTargetModel,
     target_cache: list[Any],
@@ -283,6 +347,18 @@ def dflash_generate(
                 block_tokens=block_tokens,
                 temperature=temperature,
                 layer_ids=layer_ids,
+            )
+        elif verify_mode == "parallel-lazy-logits":
+            accepted_inputs, posterior_token, verifier_hidden = (
+                verify_block_parallel_lazy_logits(
+                    target=target,
+                    target_cache=target_cache,
+                    block_tokens=block_tokens,
+                    draft_block_size=block_size,
+                    temperature=temperature,
+                    layer_ids=layer_ids,
+                    logit_chunk_size=verify_chunk_size,
+                )
             )
         else:
             accepted_inputs, posterior_token, verifier_hidden = verify_block_parallel_replay(
