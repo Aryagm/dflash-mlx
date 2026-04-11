@@ -23,6 +23,21 @@ DFlash uses a block-diffusion draft model to accelerate LLM inference. This proj
 
 > Measured on a MacBook Pro M4 Max (36 GB). Absolute numbers vary by chip: the gains are what matter.
 
+## Raw Speed Mode
+
+There is also an **experimental, inexact** verifier path for speed research:
+
+```bash
+python3 scripts/run_dflash_mlx.py \
+  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
+  --verify-mode accept-all \
+  --speculative-tokens 512 \
+  --max-new-tokens 1024 \
+  --warmup-runs 1
+```
+
+This trusts oversized DFlash draft blocks instead of checking the accepted prefix. It is not lossless and should not be used as a quality benchmark, but it shows the hardware ceiling: **998 tok/s generation, 895 tok/s end-to-end** on the same M4 Max run, about **8.4x faster than plain 4-bit MLX** in our logs.
+
 ## Quick Start
 
 ```bash

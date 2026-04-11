@@ -120,6 +120,25 @@ def verify_block_parallel_replay(
     return accepted_inputs, posterior[matched], verifier_hidden[:, :accepted_inputs, :]
 
 
+def verify_block_accept_all(
+    target: LoadedTargetModel,
+    target_cache: list[Any],
+    block_tokens: list[int],
+    temperature: float,
+    layer_ids: list[int],
+) -> tuple[int, int, mx.array]:
+    # Unsafe speed-first mode: trust every drafted token, but still run the
+    # target over the accepted block to keep target-side features/cache aligned.
+    posterior_logits, verifier_hidden = target.forward_accept_all_block(
+        mx.array(block_tokens, dtype=mx.uint32)[None],
+        target_cache,
+        layer_ids,
+    )
+    mx.eval(posterior_logits, verifier_hidden)
+    posterior_token = int(sample_tokens(posterior_logits[:, -1, :], temperature).item())
+    return len(block_tokens), posterior_token, verifier_hidden
+
+
 def verify_block_chunked(
     target: LoadedTargetModel,
     target_cache: list[Any],
@@ -200,11 +219,12 @@ def dflash_generate(
     draft_cache = draft.make_cache()
     total_max_tokens = int(prompt_tokens.shape[0]) + max_new_tokens
     prompt_len = int(prompt_tokens.shape[0])
-    block_size = (
-        draft.block_size
-        if speculative_tokens is None
-        else max(1, min(speculative_tokens, draft.block_size))
-    )
+    if speculative_tokens is None:
+        block_size = draft.block_size
+    elif verify_mode == "accept-all":
+        block_size = max(1, speculative_tokens)
+    else:
+        block_size = max(1, min(speculative_tokens, draft.block_size))
 
     sync_start = time.perf_counter()
     logits, target_hidden = target.forward_with_hidden_states(
@@ -255,6 +275,14 @@ def dflash_generate(
                 temperature=temperature,
                 layer_ids=layer_ids,
                 verify_chunk_size=verify_chunk_size,
+            )
+        elif verify_mode == "accept-all":
+            accepted_inputs, posterior_token, verifier_hidden = verify_block_accept_all(
+                target=target,
+                target_cache=target_cache,
+                block_tokens=block_tokens,
+                temperature=temperature,
+                layer_ids=layer_ids,
             )
         else:
             accepted_inputs, posterior_token, verifier_hidden = verify_block_parallel_replay(

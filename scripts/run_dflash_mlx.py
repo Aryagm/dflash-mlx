@@ -45,12 +45,20 @@ def parse_args() -> argparse.Namespace:
         "--speculative-tokens",
         type=int,
         default=None,
-        help="Number of draft tokens to verify per step. Defaults to the draft model block size.",
+        help=(
+            "Number of draft tokens per step. Exact verifier modes clamp this to "
+            "the draft model block size; inexact accept-all mode allows larger "
+            "oversized blocks for speed experiments."
+        ),
     )
     parser.add_argument(
         "--verify-mode",
-        choices=["stream", "chunked", "parallel-replay"],
+        choices=["stream", "chunked", "parallel-replay", "accept-all"],
         default="parallel-replay",
+        help=(
+            "Verifier strategy. 'accept-all' is experimental and inexact: it "
+            "trusts the full drafted block instead of checking the accepted prefix."
+        ),
     )
     parser.add_argument("--verify-chunk-size", type=int, default=4)
     parser.add_argument("--draft-quant-bits", type=int, default=None)
@@ -94,11 +102,26 @@ def main() -> None:
 
     prompt_tokens = target.build_prompt(prompt_text)
     stop_token_ids = target.stop_token_ids()
+    requested_speculative_tokens = (
+        draft.block_size if args.speculative_tokens is None else args.speculative_tokens
+    )
+    effective_speculative_tokens = (
+        max(1, requested_speculative_tokens)
+        if args.verify_mode == "accept-all"
+        else max(1, min(requested_speculative_tokens, draft.block_size))
+    )
 
     print(
-        f"[run] prompt_tokens={prompt_tokens.shape[0]} block_size={draft.block_size} "
+        f"[run] prompt_tokens={prompt_tokens.shape[0]} "
+        f"draft_block_size={draft.block_size} "
+        f"speculative_tokens={effective_speculative_tokens} "
         f"max_new_tokens={args.max_new_tokens} temperature={args.temperature}"
     )
+    if args.verify_mode == "accept-all":
+        print(
+            "[warning] accept-all is inexact: it trusts drafted blocks and may "
+            "diverge from target-model output."
+        )
     with wired_limit(target.model):
         for warmup_idx in range(args.warmup_runs):
             _, warm_metrics = dflash_generate(

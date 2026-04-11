@@ -274,6 +274,22 @@ class MLXTargetAdapter:
     ) -> tuple[mx.array, mx.array] | tuple[mx.array, mx.array, dict[int, dict[str, mx.array]]]:
         raise NotImplementedError
 
+    def forward_accept_all_block(
+        self,
+        model,
+        inputs: mx.array,
+        cache: list[Any],
+        layer_ids: list[int],
+    ) -> tuple[mx.array, mx.array]:
+        logits, target_hidden = self.forward_with_hidden_states(
+            model,
+            inputs,
+            cache,
+            layer_ids,
+            return_rollback_records=False,
+        )
+        return logits[:, -1:, :], target_hidden
+
     def snapshot_linear_caches(
         self,
         model,
@@ -391,6 +407,27 @@ class Qwen35TargetAdapter(MLXTargetAdapter):
         if return_rollback_records:
             return logits, target_hidden, rollback_records
         return logits, target_hidden
+
+    def forward_accept_all_block(
+        self,
+        model,
+        inputs: mx.array,
+        cache: list[Any],
+        layer_ids: list[int],
+    ) -> tuple[mx.array, mx.array]:
+        if hasattr(model, "language_model") and hasattr(
+            model.language_model.model,
+            "forward_dflash",
+        ):
+            norm_hidden_states, target_hidden = model.language_model.model.forward_dflash(
+                inputs=inputs,
+                cache=cache,
+                layer_ids=layer_ids,
+                return_rollback_records=False,
+            )
+            return self.lm_head_logits(model, norm_hidden_states[:, -1:, :]), target_hidden
+
+        return super().forward_accept_all_block(model, inputs, cache, layer_ids)
 
     def snapshot_linear_caches(
         self,
@@ -535,6 +572,19 @@ class LoadedTargetModel:
             cache,
             layer_ids,
             return_rollback_records=return_rollback_records,
+        )
+
+    def forward_accept_all_block(
+        self,
+        inputs: mx.array,
+        cache: list[Any],
+        layer_ids: list[int],
+    ) -> tuple[mx.array, mx.array]:
+        return self.adapter.forward_accept_all_block(
+            self.model,
+            inputs,
+            cache,
+            layer_ids,
         )
 
     def snapshot_linear_caches(
