@@ -2,7 +2,7 @@ from dflash_mlx import DFlashGenerator
 
 
 runner = DFlashGenerator(
-    target_model="mlx-community/Qwen3.5-4B-MLX-4bit",
+    target_model="mlx-community/Qwen3.5-4B-MLX-bf16",
     draft_model="z-lab/Qwen3.5-4B-DFlash",
 )
 

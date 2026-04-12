@@ -12,7 +12,7 @@ from .draft import DFlashDraftModel, load_draft_model, maybe_quantize_draft_mode
 from .runtime import dflash_generate
 
 
-DEFAULT_TARGET_MODEL = "mlx-community/Qwen3.5-4B-MLX-4bit"
+DEFAULT_TARGET_MODEL = "mlx-community/Qwen3.5-4B-MLX-bf16"
 DEFAULT_DRAFT_MODEL = "z-lab/Qwen3.5-4B-DFlash"
 
 

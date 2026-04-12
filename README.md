@@ -6,20 +6,15 @@ Lossless speculative decoding on Apple Silicon. **Same output as the target mode
 
 https://github.com/user-attachments/assets/13411079-7ffd-4f3f-a3cd-fdf3dd44a537
 
-Best logged warm 128-token Qwen3.5-4B benchmark on MacBook Pro M4 Max, 36 GB:
+Best logged warm 128-token Qwen3.5-4B BF16 benchmark on MacBook Pro M4 Max, 36 GB:
 
-| | generation tok/s | vs llama.cpp |
+| Engine | generation tok/s | vs MLX-LM |
 |---|---:|---:|
-| **bf16** | | |
-| llama.cpp | 35.6 | 1.0x |
-| MLX-LM | 40.6 | 1.1x |
-| **DFlash + MLX** | **100.5** | **2.8x** |
-| **4-bit** | | |
-| llama.cpp (Q4_K_M) | 76.4 | 1.0x |
-| MLX-LM | 119.4 | 1.6x |
-| **DFlash + MLX** | **161.9** | **2.1x** |
+| llama.cpp BF16 | 35.6 | 0.9x |
+| MLX-LM BF16 | 40.6 | 1.0x |
+| **DFlash + MLX BF16** | **100.5** | **2.5x** |
 
-> These are best logged warm generation tok/s numbers on the built-in short prompt. Cold first runs include MLX compilation overhead, and long continuations depend on acceptance length, so benchmark your exact workload.
+> These are best logged warm generation tok/s numbers on the built-in short prompt. Cold first runs include MLX compilation overhead, and long continuations depend on acceptance length, so benchmark your exact workload. Quantized targets are supported, but quantized speedups are workload-dependent until adaptive fallback lands.
 
 ## How it works
 
@@ -34,7 +29,7 @@ git clone https://github.com/aryagm/dflash-mlx.git && cd dflash-mlx
 uv sync
 
 uv run dflash-mlx \
-  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
+  --target-model mlx-community/Qwen3.5-4B-MLX-bf16 \
   --draft-model z-lab/Qwen3.5-4B-DFlash \
   --max-new-tokens 128 \
   --warmup-runs 1 \
@@ -45,7 +40,7 @@ If you omit `--warmup-runs`, the first run is a cold smoke test and will be lowe
 
 ```bash
 uv run dflash-mlx \
-  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
+  --target-model mlx-community/Qwen3.5-4B-MLX-bf16 \
   --draft-model z-lab/Qwen3.5-4B-DFlash \
   --max-new-tokens 4096 \
   --warmup-runs 1 \
@@ -56,7 +51,7 @@ Machine-readable output:
 
 ```bash
 uv run dflash-mlx \
-  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
+  --target-model mlx-community/Qwen3.5-4B-MLX-bf16 \
   --draft-model z-lab/Qwen3.5-4B-DFlash \
   --prompt "Write a quicksort in Python." \
   --max-new-tokens 128 \
@@ -75,7 +70,7 @@ Check model support before loading full weights:
 
 ```bash
 uv run dflash-mlx-inspect \
-  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
+  --target-model mlx-community/Qwen3.5-4B-MLX-bf16 \
   --draft-model z-lab/Qwen3.5-4B-DFlash
 ```
 
@@ -97,8 +92,8 @@ Today this repo is focused on Qwen3.5-4B. Other upstream DFlash checkpoints need
 
 | Target | Draft | Status |
 |---|---|---|
-| `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Supported |
-| `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` | Supported |
+| `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` | Supported, headline path |
+| `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Supported, workload-dependent speedup |
 | `mlx-community/Qwen3-4B-{bf16,8bit,4bit}` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental adapter |
 
 Upstream DFlash checkpoints exist for Llama 3.1, Qwen3 Coder, Kimi-K2.5, GPT-OSS, and more ([HF collection](https://huggingface.co/collections/z-lab/dflash)). Adding a new family starts with an adapter and may need a custom MLX model shim if cache rollback is architecture-specific; see [ADDING_MODELS.md](ADDING_MODELS.md).
