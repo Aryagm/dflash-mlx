@@ -39,15 +39,55 @@ uv run dflash-mlx \
   --max-new-tokens 128
 ```
 
+Machine-readable output:
+
+```bash
+uv run dflash-mlx \
+  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
+  --draft-model z-lab/Qwen3.5-4B-DFlash \
+  --prompt "Write a quicksort in Python." \
+  --max-new-tokens 128 \
+  --json \
+  --no-history
+```
+
+Interactive chat:
+
+```bash
+uv run dflash-mlx-chat
+```
+
+Check model support before loading full weights:
+
+```bash
+uv run dflash-mlx-inspect \
+  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
+  --draft-model z-lab/Qwen3.5-4B-DFlash
+```
+
+Python API:
+
+```python
+from dflash_mlx import DFlashGenerator
+
+runner = DFlashGenerator()
+result = runner.generate("Write a quicksort in Python.", max_new_tokens=128)
+print(result.text)
+```
+
+See [examples/python_api.py](examples/python_api.py) for a minimal script.
+
 ## Supported models
+
+Today this repo is focused on Qwen3.5-4B. Other upstream DFlash checkpoints need MLX target adapters before they can be exact on Mac.
 
 | Target | Draft | Status |
 |---|---|---|
-| `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Stable |
-| `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` | Stable |
-| `mlx-community/Qwen3-4B-{bf16,8bit,4bit}` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental |
+| `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Supported |
+| `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` | Supported |
+| `mlx-community/Qwen3-4B-{bf16,8bit,4bit}` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental adapter |
 
-Upstream DFlash checkpoints exist for Llama 3.1, Qwen3 Coder, Kimi-K2.5, and more ([HF collection](https://huggingface.co/collections/z-lab/dflash)). Adding a new model family is a single adapter file &mdash; see [Adding models](#adding-new-models) below.
+Upstream DFlash checkpoints exist for Llama 3.1, Qwen3 Coder, Kimi-K2.5, GPT-OSS, and more ([HF collection](https://huggingface.co/collections/z-lab/dflash)). Adding a new family starts with an adapter and may need a custom MLX model shim if cache rollback is architecture-specific; see [ADDING_MODELS.md](ADDING_MODELS.md).
 
 ## What we built
 
@@ -55,7 +95,7 @@ MLX has no speculative decoding primitives. Everything below was written from sc
 
 - **Draft-then-verify loop** running entirely on Metal: proposal generation, batched verification, token acceptance, and KV cache management in one tight loop
 - **Hidden-state extraction** from target model intermediate layers &mdash; DFlash's drafter needs internal representations, not just logits
-- **KV cache rollback** when the target rejects a proposed token (Qwen3.5's hybrid sliding-window + global attention needs per-layer rollback logic)
+- **Cache rollback** when the target rejects a proposed token (Qwen3.5's hybrid attention + linear-attention state needs per-layer rollback logic)
 - **Pluggable model adapters** so adding a new architecture doesn't touch the core decode loop
 
 ## Adding new models

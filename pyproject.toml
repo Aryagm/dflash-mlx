@@ -18,6 +18,8 @@ dependencies = [
 [project.scripts]
 dflash-mlx = "dflash_mlx.cli:main"
 dflash-mlx-bench = "dflash_mlx.benchmark_cli:main"
+dflash-mlx-chat = "dflash_mlx.chat_cli:main"
+dflash-mlx-inspect = "dflash_mlx.inspect_cli:main"
 dflash-mlx-prepare-model = "dflash_mlx.model_prep:main"
 
 [tool.setuptools.packages.find]

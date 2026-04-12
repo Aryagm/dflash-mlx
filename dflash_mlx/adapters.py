@@ -823,8 +823,13 @@ def load_target_model(path_or_repo: str) -> LoadedTargetModel:
     model_type = config.get("model_type")
     adapter_cls = adapter_for_model_type(model_type)
     if adapter_cls is None:
+        registered = ", ".join(sorted(ADAPTERS))
         raise NotImplementedError(
-            f"No MLX DFlash adapter registered for model_type={model_type!r}"
+            f"Unsupported MLX DFlash target model_type={model_type!r} for "
+            f"{path_or_repo!r}. A matching DFlash draft checkpoint is not enough; "
+            "the target family also needs an MLX adapter for hidden-state "
+            "extraction and exact cache rollback. Current adapters: "
+            f"{registered}. See ADDING_MODELS.md."
         )
 
     adapter = adapter_cls()
