@@ -70,7 +70,7 @@ ax.tick_params(left=False, bottom=False)
 fig.text(
     0.5,
     0.95,
-    "dflash-mlx \u2014 throughput on Mac",
+    "dflash-mlx \u2014 throughput comparison",
     fontsize=14,
     fontweight="bold",
     color="#e6eaf0",
