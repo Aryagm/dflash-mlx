@@ -4,17 +4,31 @@ Lossless speculative decoding on Apple Silicon. **Same output as the target mode
 
 ![Benchmarks](assets/benchmark-chart.png)
 
-https://github.com/user-attachments/assets/13411079-7ffd-4f3f-a3cd-fdf3dd44a537
+https://github.com/user-attachments/assets/e7a78bca-1a62-42eb-ba75-da32b3b3ad40
 
-Best logged warm 128-token Qwen3.5-4B BF16 benchmark on MacBook Pro M4 Max, 36 GB:
+Logged warm Qwen3-4B long-generation benchmark on MacBook Pro M4 Max, 36 GB:
 
-| Engine | generation tok/s | vs MLX-LM |
-|---|---:|---:|
-| llama.cpp BF16 | 35.6 | 0.9x |
-| MLX-LM BF16 | 40.6 | 1.0x |
-| **DFlash + MLX BF16** | **100.5** | **2.5x** |
+| Max new tokens | MLX-LM BF16 tok/s | dflash-mlx BF16 tok/s | vs MLX-LM | Avg acceptance |
+|---:|---:|---:|---:|---:|
+| 512 | 42.3 | 133.1 | 3.1x | 8.81 |
+| 1024 | 42.0 | 144.6 | 3.4x | 9.66 |
+| 2048 | 41.3 | 174.4 | 4.2x | 11.97 |
+| 4028 | 40.6 | 186.4 | 4.6x | 13.55 |
 
-> These are best logged warm generation tok/s numbers on the built-in short prompt. Cold first runs include MLX compilation overhead, and long continuations depend on acceptance length, so benchmark your exact workload.
+4028-token runtime comparison on the same prompt:
+
+| Target | Runtime | tok/s | vs plain MLX | Detail |
+|---|---|---:|---:|---|
+| BF16 | llama.cpp | 41.1 | 1.0x | `Qwen3-4B-BF16.gguf`, `-ngl all -fa on` |
+| BF16 | MLX-LM | 40.6 | 1.0x | `mlx-community/Qwen3-4B-bf16` |
+| BF16 | dflash-mlx | 186.4 | 4.6x | Avg acceptance 13.55 |
+| 4-bit / Q4_K_M | llama.cpp | 97.8 | 0.9x | `Qwen3-4B-Q4_K_M.gguf`, `-ngl all -fa on` |
+| 4-bit | MLX-LM | 110.5 | 1.0x | `mlx-community/Qwen3-4B-4bit` |
+| 4-bit | dflash-mlx | 159.2 | 1.4x | Avg acceptance 8.92 |
+
+> These are single-prompt warm generation tok/s numbers on the built-in functional-equation prompt. The 4-bit llama.cpp row uses Q4_K_M GGUF, while the MLX rows use the MLX 4-bit checkpoint, so that quantized comparison is runtime-level rather than byte-identical weights. Cold first runs include MLX compilation overhead, and long continuations depend on acceptance length, so benchmark your exact workload.
+
+Detailed run notes are saved in [benchmarks/qwen3-results.md](benchmarks/qwen3-results.md).
 
 ## How it works
 
@@ -29,8 +43,8 @@ git clone https://github.com/aryagm/dflash-mlx.git && cd dflash-mlx
 uv sync
 
 uv run dflash-mlx \
-  --target-model mlx-community/Qwen3.5-4B-MLX-bf16 \
-  --draft-model z-lab/Qwen3.5-4B-DFlash \
+  --target-model mlx-community/Qwen3-4B-bf16 \
+  --draft-model z-lab/Qwen3-4B-DFlash-b16 \
   --max-new-tokens 128 \
   --warmup-runs 1 \
   --no-history
@@ -40,8 +54,8 @@ If you omit `--warmup-runs`, the first run is a cold smoke test and will be lowe
 
 ```bash
 uv run dflash-mlx \
-  --target-model mlx-community/Qwen3.5-4B-MLX-bf16 \
-  --draft-model z-lab/Qwen3.5-4B-DFlash \
+  --target-model mlx-community/Qwen3-4B-bf16 \
+  --draft-model z-lab/Qwen3-4B-DFlash-b16 \
   --max-new-tokens 4096 \
   --warmup-runs 1 \
   --warmup-max-new-tokens 128
@@ -51,8 +65,8 @@ Machine-readable output:
 
 ```bash
 uv run dflash-mlx \
-  --target-model mlx-community/Qwen3.5-4B-MLX-bf16 \
-  --draft-model z-lab/Qwen3.5-4B-DFlash \
+  --target-model mlx-community/Qwen3-4B-bf16 \
+  --draft-model z-lab/Qwen3-4B-DFlash-b16 \
   --prompt "Write a quicksort in Python." \
   --max-new-tokens 128 \
   --warmup-runs 1 \
@@ -70,8 +84,8 @@ Check model support before loading full weights:
 
 ```bash
 uv run dflash-mlx-inspect \
-  --target-model mlx-community/Qwen3.5-4B-MLX-bf16 \
-  --draft-model z-lab/Qwen3.5-4B-DFlash
+  --target-model mlx-community/Qwen3-4B-bf16 \
+  --draft-model z-lab/Qwen3-4B-DFlash-b16
 ```
 
 Python API:
@@ -88,15 +102,17 @@ See [examples/python_api.py](examples/python_api.py) for a minimal script.
 
 ## Supported models
 
-Today this repo is focused on Qwen3.5-4B. Other upstream DFlash checkpoints need MLX target adapters before they can be exact on Mac.
+Today this repo is focused on Qwen3-4B BF16, which is the closest supported path to the DFlash paper's main Qwen3 long-generation setup. Qwen3.5 remains supported and archived for follow-up work.
 
 | Target | Draft | Status |
 |---|---|---|
-| `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` | Supported, headline path |
-| `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Supported, later optimization target |
-| `mlx-community/Qwen3-4B-bf16` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental adapter |
+| `mlx-community/Qwen3-4B-bf16` | `z-lab/Qwen3-4B-DFlash-b16` | Supported, headline path |
+| `mlx-community/Qwen3-4B-4bit` | `z-lab/Qwen3-4B-DFlash-b16` | Supported, measured quantized target |
+| `mlx-community/Qwen3-4B-8bit` | `z-lab/Qwen3-4B-DFlash-b16` | Supported, quantized target |
+| `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` | Supported, archived optimization path |
+| `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Supported, archived quantized target |
 
-Quantized targets are intentionally not the headline path right now. They can be very fast, but exact DFlash speedups are more workload-dependent there; we will revisit them after the BF16 verifier path is faster and better understood.
+Qwen3.5 results are saved in [benchmarks/qwen35-results.md](benchmarks/qwen35-results.md). Its hybrid attention plus linear-attention cache path is still useful for adapter work, but current long-generation acceptance is weaker than Qwen3 on the built-in prompt.
 
 Upstream DFlash checkpoints exist for Llama 3.1, Qwen3 Coder, Kimi-K2.5, GPT-OSS, and more ([HF collection](https://huggingface.co/collections/z-lab/dflash)). Adding a new family starts with an adapter and may need a custom MLX model shim if cache rollback is architecture-specific; see [ADDING_MODELS.md](ADDING_MODELS.md).
 
@@ -108,10 +124,11 @@ MLX has no speculative decoding primitives. Everything below was written from sc
 - **Hidden-state extraction** from target model intermediate layers &mdash; DFlash's drafter needs internal representations, not just logits
 - **Cache rollback** when the target rejects a proposed token (Qwen3.5's hybrid attention + linear-attention state needs per-layer rollback logic)
 - **Pluggable model adapters** so adding a new architecture doesn't touch the core decode loop
+- **Reproducible chart generation** via `uv run --extra charts python scripts/generate_benchmark_chart.py`
 
 ## Adding new models
 
-Each model family needs an adapter in `dflash_mlx/adapters.py`. The Qwen3.5 adapter is the reference implementation. See [ADDING_MODELS.md](ADDING_MODELS.md) for the full checklist.
+Each model family needs an adapter in `dflash_mlx/adapters.py`. The Qwen3 adapter is the default path; Qwen3.5 is the reference for custom recurrent cache rollback. See [ADDING_MODELS.md](ADDING_MODELS.md) for the full checklist.
 
 ## Citation
 
