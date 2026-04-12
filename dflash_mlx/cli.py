@@ -5,6 +5,8 @@ import argparse
 import json
 from pathlib import Path
 
+from huggingface_hub.utils import disable_progress_bars
+
 from .api import DEFAULT_DRAFT_MODEL, DEFAULT_TARGET_MODEL, DFlashGenerator
 from .history import (
     DEFAULT_HISTORY_PATH,
@@ -147,6 +149,8 @@ def main() -> None:
     args = parse_args()
     if args.prompt is not None and args.prompt_file is not None:
         raise SystemExit("Use either --prompt or --prompt-file, not both.")
+    if args.json:
+        disable_progress_bars()
     log = (lambda *items: None) if args.json else print
     history_path = args.history_file or DEFAULT_HISTORY_PATH
     record_history = (
