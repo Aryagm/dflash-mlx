@@ -29,7 +29,19 @@ print(result.text)
 
 [DFlash](https://arxiv.org/abs/2602.06036) trains a small block-diffusion model to propose multiple tokens at once. The target verifies them in a single forward pass and accepts the longest correct prefix &mdash; identical output, fewer forward passes, higher throughput.
 
-The original DFlash targets CUDA. `dflash-mlx` is a native MLX port for Apple Silicon: target hidden-state extraction, draft block proposal, batched verification, and per-layer KV cache rollback, all running on Metal.
+The original DFlash targets CUDA. `dflash-mlx` is a native MLX port for Apple Silicon. MLX has no speculative-decoding primitives, so every piece of the draft/verify loop had to be built from scratch on top of Metal:
+
+- **Hidden-state extraction from the target.** DFlash's drafter conditions on intermediate layer activations, not just logits. We hook into specific Qwen layers and surface those tensors without breaking the standard forward path or the KV cache, so a single target pass gives us both verification logits and the hidden states the next draft block needs.
+
+- **Parallel block proposal.** The draft model runs a block-diffusion denoising loop to propose several tokens at once. This runs entirely on the GPU with its own cache, sharing tokenization and positional context with the target.
+
+- **Single-pass batched verification.** Every proposed block is verified in one target forward pass. The target's logits are compared greedily against the draft's samples; we accept the longest matching prefix plus one bonus correction token, which is what makes the output bit-for-bit identical to plain target decoding.
+
+- **Per-layer KV cache rollback on rejection.** When the target rejects the tail of a proposal, the KV cache has to be rewound to the exact accepted length &mdash; per layer, because Qwen3.5 mixes full attention, sliding-window attention, and recurrent linear-attention state, and each has its own cache shape and rollback rule. Plain MLX caches don't expose this; we extend them.
+
+- **Pluggable adapters.** Target-specific concerns (layer ids to tap, cache types, stop tokens, chat template) are isolated in `dflash_mlx/adapters.py`. The core draft/verify loop is architecture-agnostic, so adding a new family is one adapter file rather than a rewrite.
+
+- **Warm-path throughput engineering.** MLX kernel compilation, lazy evaluation, and graph caching all affect the numbers. The bench CLI separates warmup from measurement and pins evaluation points so the reported tok/s reflects steady-state Metal performance, not first-run overhead.
 
 ## Supported models
 
