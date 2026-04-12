@@ -1,6 +1,6 @@
 # dflash-mlx
 
-**Qwen3 on Apple Silicon, 4.6× faster.** Bit-for-bit identical output to the target model.
+**DFlash implementation for Apple Silicon, using MLX.**
 
 ![Benchmarks](assets/benchmark-chart.png)
 
