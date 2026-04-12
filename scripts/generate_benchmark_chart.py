@@ -70,7 +70,7 @@ ax.tick_params(left=False, bottom=False)
 fig.text(
     0.5,
     0.95,
-    "dflash-mlx throughput comparison",
+    "Throughput on Qwen3-4B",
     fontsize=14,
     fontweight="bold",
     color="#e6eaf0",
@@ -79,7 +79,7 @@ fig.text(
 fig.text(
     0.5,
     0.88,
-    "Qwen3-4B BF16  \u00b7  4,028-token generation  \u00b7  MacBook Pro M4 Max, 36 GB",
+    "BF16  \u00b7  4,028-token generation  \u00b7  MacBook Pro M4 Max, 36 GB",
     fontsize=9.5,
     color="#6b7585",
     ha="center",
