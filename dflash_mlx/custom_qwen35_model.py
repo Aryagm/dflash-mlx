@@ -88,8 +88,10 @@ def make_gated_delta_state_kernel():
 
 GATED_DELTA_STATE_KERNEL = make_gated_delta_state_kernel()
 FULL_ATTENTION_VERIFY_COMPILED_FNS: dict[int, Any] = {}
+LINEAR_VERIFY_COMPILED_FNS: dict[int, Any] = {}
 VERIFY_WITH_ROLLBACK_COMPILED_FNS: dict[tuple[int, tuple[int, ...], int], Any] = {}
 ENABLE_EXPLICIT_CACHE_COMPILED_VERIFY = False
+ENABLE_LINEAR_LAYER_COMPILED_VERIFY = True
 
 
 def advance_gated_delta_states(
@@ -224,12 +226,84 @@ def forward_full_attention_layer_dflash(
     return layer(hidden_states, mask=mask, cache=cache)
 
 
+def get_compiled_linear_verify_fn(layer):
+    key = id(layer)
+    compiled = LINEAR_VERIFY_COMPILED_FNS.get(key)
+    if compiled is not None:
+        return compiled
+
+    # Verification repeatedly evaluates fixed-size draft blocks with warm SSM
+    # caches, so compiling the linear-attention layer body avoids rebuilding the
+    # same MLX graph while keeping the rollback tensors exact.
+    @mx.compile
+    def compiled_linear_verify(
+        hidden_states: mx.array,
+        initial_conv_state: mx.array,
+        initial_state: mx.array,
+    ) -> tuple[
+        mx.array,
+        mx.array,
+        mx.array,
+        mx.array,
+        mx.array,
+        mx.array,
+        mx.array,
+        mx.array,
+    ]:
+        return forward_linear_layer_explicit_with_record(
+            layer,
+            hidden_states,
+            None,
+            initial_conv_state,
+            initial_state,
+        )
+
+    LINEAR_VERIFY_COMPILED_FNS[key] = compiled_linear_verify
+    return compiled_linear_verify
+
+
 def forward_linear_layer_with_rollback_record(
     layer,
     hidden_states: mx.array,
     mask: mx.array | None,
     cache: ArraysCache | None,
 ) -> tuple[mx.array, dict[str, mx.array]]:
+    if (
+        ENABLE_LINEAR_LAYER_COMPILED_VERIFY
+        and cache is not None
+        and cache[0] is not None
+        and cache[1] is not None
+        and hidden_states.shape[1] > 1
+        and mask is None
+    ):
+        initial_conv_state = cache[0]
+        initial_state = cache[1]
+        compiled = get_compiled_linear_verify_fn(layer)
+        (
+            hidden_states,
+            new_conv_state,
+            new_state,
+            qkv,
+            keys,
+            values,
+            g,
+            beta,
+        ) = compiled(hidden_states, initial_conv_state, initial_state)
+        cache[0] = new_conv_state
+        cache[1] = new_state
+        linear = layer.linear_attn
+        rollback_record = {
+            "initial_conv_state": initial_conv_state,
+            "initial_state": initial_state,
+            "qkv": qkv,
+            "k": keys,
+            "v": values,
+            "g": g,
+            "beta": beta,
+            "repeat_factor": linear.num_v_heads // linear.num_k_heads,
+        }
+        return hidden_states, rollback_record
+
     linear = layer.linear_attn
     residual = hidden_states
     inputs = layer.input_layernorm(hidden_states)
