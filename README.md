@@ -26,6 +26,23 @@ result = runner.generate("Write a quicksort in Python.", max_new_tokens=128)
 print(result.text)
 ```
 
+## Supported models
+
+| Target | Draft |
+|---|---|
+| `mlx-community/Qwen3-4B-bf16` (default) | `z-lab/Qwen3-4B-DFlash-b16` |
+| `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` |
+
+Qwen3.5 support is functional but incomplete. It is not as fast as the Qwen3 path today because Qwen3.5 uses a more complicated hybrid attention stack with recurrent linear-attention state, so exact partial-block acceptance needs custom cache rollback and currently has weaker long-generation acceptance.
+
+Upstream DFlash has checkpoints for Llama 3.1, Qwen3 Coder, Kimi-K2.5, GPT-OSS, and more in the [Hugging Face collection](https://huggingface.co/collections/z-lab/dflash). Adding a new family starts with an adapter in `dflash_mlx/adapters.py` &mdash; see [ADDING_MODELS.md](ADDING_MODELS.md).
+
+## Benchmarks
+
+Full run details, acceptance stats, and quantized comparisons:
+- [benchmarks/qwen3-results.md](benchmarks/qwen3-results.md) &mdash; headline Qwen3 results
+- [benchmarks/qwen35-results.md](benchmarks/qwen35-results.md) &mdash; archived Qwen3.5 runs
+
 ## How it works
 
 [DFlash](https://arxiv.org/abs/2602.06036) trains a small block-diffusion model to propose multiple tokens at once. The target verifies them in a single forward pass and accepts the longest correct prefix &mdash; identical output, fewer forward passes, higher throughput.
@@ -43,23 +60,6 @@ The original DFlash targets CUDA. `dflash-mlx` is a native MLX port for Apple Si
 - **Pluggable adapters.** Target-specific concerns (layer ids to tap, cache types, stop tokens, chat template) are isolated in `dflash_mlx/adapters.py`. The core draft/verify loop is architecture-agnostic, so adding a new family is one adapter file rather than a rewrite.
 
 - **Warm-path throughput engineering.** MLX kernel compilation, lazy evaluation, and graph caching all affect the numbers. The bench CLI separates warmup from measurement and pins evaluation points so the reported tok/s reflects steady-state Metal performance, not first-run overhead.
-
-## Supported models
-
-| Target | Draft |
-|---|---|
-| `mlx-community/Qwen3-4B-bf16` (default) | `z-lab/Qwen3-4B-DFlash-b16` |
-| `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` |
-
-Qwen3.5 support is functional but incomplete. It is not as fast as the Qwen3 path today because Qwen3.5 uses a more complicated hybrid attention stack with recurrent linear-attention state, so exact partial-block acceptance needs custom cache rollback and currently has weaker long-generation acceptance.
-
-Upstream DFlash has checkpoints for Llama 3.1, Qwen3 Coder, Kimi-K2.5, GPT-OSS, and more in the [Hugging Face collection](https://huggingface.co/collections/z-lab/dflash). Adding a new family starts with an adapter in `dflash_mlx/adapters.py` &mdash; see [ADDING_MODELS.md](ADDING_MODELS.md).
-
-## Benchmarks
-
-Full run details, acceptance stats, and quantized comparisons:
-- [benchmarks/qwen3-results.md](benchmarks/qwen3-results.md) &mdash; headline Qwen3 results
-- [benchmarks/qwen35-results.md](benchmarks/qwen35-results.md) &mdash; archived Qwen3.5 runs
 
 ## Citation
 
