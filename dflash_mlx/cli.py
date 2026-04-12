@@ -99,6 +99,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--draft-quant-bits", type=int, default=None)
     parser.add_argument("--draft-quant-group-size", type=int, default=64)
     parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="Include coarse decode-phase timings in metrics.",
+    )
+    parser.add_argument(
         "--draft-attention-mask",
         choices=["auto", "none", "causal"],
         default="auto",
@@ -232,6 +237,7 @@ def main() -> None:
         speculative_tokens=args.speculative_tokens,
         verify_mode=args.verify_mode,
         verify_chunk_size=args.verify_chunk_size,
+        profile=args.profile,
     )
     metrics = result.metrics
 
@@ -260,6 +266,8 @@ def main() -> None:
     log(f"End-to-end TPS:           {metrics['end_to_end_tps']:.2f}")
     log(f"Average acceptance:       {metrics['avg_acceptance_length']:.2f}")
     log(f"Acceptance lengths:       {metrics['acceptance_lengths']}")
+    if args.profile and "profile" in metrics:
+        log(f"Profile:                  {metrics['profile']}")
     log(f"Peak memory:              {metrics['peak_memory_gb']:.2f} GB")
     log("=" * 60)
 

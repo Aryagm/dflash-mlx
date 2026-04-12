@@ -48,6 +48,19 @@ def peak_memory_gb() -> float:
     return mx.get_peak_memory() / 1e9
 
 
+def profile_start(profile: dict[str, float] | None) -> float:
+    return time.perf_counter() if profile is not None else 0.0
+
+
+def add_profile_elapsed(
+    profile: dict[str, float] | None,
+    key: str,
+    start: float,
+) -> None:
+    if profile is not None:
+        profile[key] = profile.get(key, 0.0) + time.perf_counter() - start
+
+
 def flatten_rollback_tensors(rollback_records: Any) -> list[mx.array]:
     if isinstance(rollback_records, dict) and "layer_indices" in rollback_records:
         return [
@@ -98,7 +111,9 @@ def verify_block_parallel_replay(
     draft_block_size: int,
     temperature: float,
     layer_ids: list[int],
+    profile: dict[str, float] | None = None,
 ) -> tuple[int, int, mx.array]:
+    verifier_start = profile_start(profile)
     verifier_logits, verifier_hidden, rollback_records = target.forward_with_hidden_states(
         mx.array(block_tokens, dtype=mx.uint32)[None],
         target_cache,
@@ -107,12 +122,23 @@ def verify_block_parallel_replay(
     )
 
     posterior_tokens = sample_tokens(verifier_logits, temperature)
-    mx.eval(posterior_tokens, verifier_hidden)
+    # Do not force the full captured hidden block here. The next draft step only
+    # needs the accepted prefix, and MLX can prune the rejected suffix lazily.
+    mx.eval(posterior_tokens)
+    add_profile_elapsed(
+        profile,
+        "verify_forward_logits_time_s",
+        verifier_start,
+    )
+
+    prefix_start = profile_start(profile)
     posterior = posterior_tokens[0].tolist()
     matched = longest_prefix_match(block_tokens[1:], posterior[:-1])
     accepted_inputs = matched + 1
+    add_profile_elapsed(profile, "verify_prefix_time_s", prefix_start)
 
     if accepted_inputs < draft_block_size:
+        rollback_start = profile_start(profile)
         rollback_tensors = flatten_rollback_tensors(rollback_records)
         if rollback_tensors:
             mx.eval(*rollback_tensors)
@@ -122,6 +148,7 @@ def verify_block_parallel_replay(
             rollback_records,
             accepted_inputs,
         )
+        add_profile_elapsed(profile, "verify_rollback_time_s", rollback_start)
 
     return accepted_inputs, posterior[matched], verifier_hidden[:, :accepted_inputs, :]
 
@@ -134,13 +161,16 @@ def verify_block_parallel_lazy_logits(
     temperature: float,
     layer_ids: list[int],
     logit_chunk_size: int,
+    profile: dict[str, float] | None = None,
 ) -> tuple[int, int, mx.array]:
+    state_start = profile_start(profile)
     norm_hidden_states, verifier_hidden, rollback_records = target.forward_verifier_states(
         mx.array(block_tokens, dtype=mx.uint32)[None],
         target_cache,
         layer_ids,
     )
-    mx.eval(norm_hidden_states, verifier_hidden)
+    mx.eval(norm_hidden_states)
+    add_profile_elapsed(profile, "verify_state_time_s", state_start)
 
     matched = 0
     accepted_inputs = draft_block_size
@@ -149,11 +179,15 @@ def verify_block_parallel_lazy_logits(
 
     for chunk_start in range(0, draft_block_size, chunk_size):
         chunk_end = min(chunk_start + chunk_size, draft_block_size)
+        logit_start = profile_start(profile)
         logits_chunk = target.lm_head_logits(
             norm_hidden_states[:, chunk_start:chunk_end, :]
         )
         posterior_tokens = sample_tokens(logits_chunk, temperature)
         mx.eval(posterior_tokens)
+        add_profile_elapsed(profile, "verify_lazy_logits_time_s", logit_start)
+
+        prefix_start = profile_start(profile)
         posterior_chunk = posterior_tokens[0].tolist()
 
         for local_idx, token in enumerate(posterior_chunk):
@@ -172,12 +206,19 @@ def verify_block_parallel_lazy_logits(
             break
 
         if posterior_token is not None:
+            add_profile_elapsed(
+                profile,
+                "verify_prefix_time_s",
+                prefix_start,
+            )
             break
+        add_profile_elapsed(profile, "verify_prefix_time_s", prefix_start)
 
     if posterior_token is None:
         raise RuntimeError("Lazy-logit verifier failed to produce a posterior token.")
 
     if accepted_inputs < draft_block_size:
+        rollback_start = profile_start(profile)
         rollback_tensors = flatten_rollback_tensors(rollback_records)
         if rollback_tensors:
             mx.eval(*rollback_tensors)
@@ -187,6 +228,7 @@ def verify_block_parallel_lazy_logits(
             rollback_records,
             accepted_inputs,
         )
+        add_profile_elapsed(profile, "verify_rollback_time_s", rollback_start)
 
     return accepted_inputs, posterior_token, verifier_hidden[:, :accepted_inputs, :]
 
@@ -287,9 +329,11 @@ def dflash_generate(
     speculative_tokens: int | None,
     verify_mode: str,
     verify_chunk_size: int,
+    profile: bool = False,
 ) -> tuple[list[int], dict[str, Any]]:
     target_cache = target.make_cache()
     draft_cache = draft.make_cache()
+    profile_times: dict[str, float] | None = {} if profile else None
     total_max_tokens = int(prompt_tokens.shape[0]) + max_new_tokens
     prompt_len = int(prompt_tokens.shape[0])
     if speculative_tokens is None:
@@ -315,6 +359,7 @@ def dflash_generate(
 
     decode_start = time.perf_counter()
     while start < total_max_tokens:
+        draft_start = profile_start(profile_times)
         block_tokens = [output_tokens[start]] + [draft.mask_token_id] * (block_size - 1)
         block_input = mx.array(block_tokens, dtype=mx.uint32)[None]
         noise_embedding = target.embed_tokens(block_input)
@@ -330,7 +375,9 @@ def dflash_generate(
         trim_draft_cache(draft_cache, block_size)
         drafted_suffix = drafted_tokens[0].tolist()
         block_tokens[1:] = drafted_suffix[: block_size - 1]
+        add_profile_elapsed(profile_times, "draft_time_s", draft_start)
 
+        verify_start = profile_start(profile_times)
         if verify_mode == "stream":
             accepted_inputs, posterior_token, verifier_hidden = verify_block_stream(
                 target=target,
@@ -367,6 +414,7 @@ def dflash_generate(
                     temperature=temperature,
                     layer_ids=layer_ids,
                     logit_chunk_size=verify_chunk_size,
+                    profile=profile_times,
                 )
             )
         else:
@@ -377,15 +425,27 @@ def dflash_generate(
                 draft_block_size=block_size,
                 temperature=temperature,
                 layer_ids=layer_ids,
+                profile=profile_times,
             )
         acceptance_lengths.append(accepted_inputs)
 
         target_hidden = verifier_hidden[:, :accepted_inputs, :]
+        hidden_start = profile_start(profile_times)
+        if profile_times is not None:
+            mx.eval(target_hidden)
+        add_profile_elapsed(profile_times, "verify_target_hidden_time_s", hidden_start)
+        add_profile_elapsed(profile_times, "verify_time_s", verify_start)
 
+        bookkeeping_start = profile_start(profile_times)
         output_tokens = output_tokens[:start]
         output_tokens.extend(block_tokens[:accepted_inputs])
         output_tokens.append(posterior_token)
         start += accepted_inputs
+        add_profile_elapsed(
+            profile_times,
+            "bookkeeping_time_s",
+            bookkeeping_start,
+        )
 
         stop_idx = stop_position(output_tokens, prompt_len, stop_token_ids)
         if stop_idx is not None:
@@ -416,4 +476,14 @@ def dflash_generate(
         "target_cache_summary": target.cache_summary(target_cache),
         "speculative_tokens": block_size,
     }
+    if profile_times is not None:
+        profiled_time = sum(
+            profile_times.get(key, 0.0)
+            for key in ("draft_time_s", "verify_time_s", "bookkeeping_time_s")
+        )
+        metrics["profile"] = {
+            **profile_times,
+            "unattributed_decode_time_s": decode_time - profiled_time,
+            "steps": len(acceptance_lengths),
+        }
     return output_tokens, metrics

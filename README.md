@@ -96,7 +96,7 @@ Today this repo is focused on Qwen3.5-4B. Other upstream DFlash checkpoints need
 | `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Supported, later optimization target |
 | `mlx-community/Qwen3-4B-bf16` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental adapter |
 
-Quantized targets are intentionally not the headline path right now. They can be very fast, but exact DFlash speedups are more workload-dependent there; we will revisit them after BF16 verifier optimization and adaptive fallback.
+Quantized targets are intentionally not the headline path right now. They can be very fast, but exact DFlash speedups are more workload-dependent there; we will revisit them after the BF16 verifier path is faster and better understood.
 
 Upstream DFlash checkpoints exist for Llama 3.1, Qwen3 Coder, Kimi-K2.5, GPT-OSS, and more ([HF collection](https://huggingface.co/collections/z-lab/dflash)). Adding a new family starts with an adapter and may need a custom MLX model shim if cache rollback is architecture-specific; see [ADDING_MODELS.md](ADDING_MODELS.md).
 

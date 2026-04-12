@@ -70,6 +70,7 @@ class DFlashGenerator:
         verify_chunk_size: int = 4,
         reset_peak_memory: bool = True,
         skip_special_tokens: bool = False,
+        profile: bool = False,
     ) -> DFlashResult:
         with wired_limit(self.target.model):
             if reset_peak_memory:
@@ -85,6 +86,7 @@ class DFlashGenerator:
                 speculative_tokens=speculative_tokens,
                 verify_mode=verify_mode,
                 verify_chunk_size=verify_chunk_size,
+                profile=profile,
             )
 
         generated_tokens = output_tokens[metrics["num_input_tokens"] :]
@@ -109,6 +111,7 @@ class DFlashGenerator:
         verify_chunk_size: int = 4,
         reset_peak_memory: bool = True,
         skip_special_tokens: bool = False,
+        profile: bool = False,
     ) -> DFlashResult:
         return self.generate_from_tokens(
             prompt_tokens=self.encode_prompt(prompt_text),
@@ -119,4 +122,5 @@ class DFlashGenerator:
             verify_chunk_size=verify_chunk_size,
             reset_peak_memory=reset_peak_memory,
             skip_special_tokens=skip_special_tokens,
+            profile=profile,
         )
