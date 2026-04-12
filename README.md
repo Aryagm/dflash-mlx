@@ -35,8 +35,11 @@ The original DFlash targets CUDA. `dflash-mlx` is a native MLX port for Apple Si
 
 | Target | Draft |
 |---|---|
-| Qwen3-4B (default) | `z-lab/Qwen3-4B-DFlash-b16` |
-| Qwen3.5-4B | `z-lab/Qwen3.5-4B-DFlash` |
+| `mlx-community/Qwen3-4B-bf16` (default) | `z-lab/Qwen3-4B-DFlash-b16` |
+| `mlx-community/Qwen3-4B-4bit` | `z-lab/Qwen3-4B-DFlash-b16` |
+| `mlx-community/Qwen3-4B-8bit` | `z-lab/Qwen3-4B-DFlash-b16` |
+| `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` |
+| `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` |
 
 Qwen3.5 support is functional but incomplete. It is not as fast as the Qwen3 path today because Qwen3.5 uses a more complicated hybrid attention stack with recurrent linear-attention state, so exact partial-block acceptance needs custom cache rollback and currently has weaker long-generation acceptance.
 
