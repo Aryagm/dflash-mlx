@@ -75,15 +75,66 @@ If a custom model is needed, copy the closest MLX-LM model implementation into `
 
 ## 4. Validate Exactness
 
+Use this as the concrete pass/fail gate before calling a new pair supported.
+
 Before marking a model supported:
 
 ```bash
 uv run python -m py_compile dflash_mlx/*.py
-uv run dflash-mlx --target-model <target> --draft-model <draft> --max-new-tokens 64 --print-output
-uv run dflash-mlx-bench --model <target> --prompt "Write a quicksort in Python." --max-new-tokens 64 --no-history
+
+uv run python - <<'PY'
+from argparse import Namespace
+
+from dflash_mlx import DFlashGenerator
+from dflash_mlx.benchmark_cli import run_one_prompt
+
+target = "<target>"
+draft = "<draft>"
+prompt = "Write a quicksort in Python."
+
+runner = DFlashGenerator(target_model=target, draft_model=draft)
+prompt_tokens = runner.encode_prompt(prompt)
+
+dflash = runner.generate_from_tokens(
+    prompt_tokens,
+    max_new_tokens=64,
+    temperature=0.0,
+    verify_mode="parallel-replay",
+)
+
+plain_args = Namespace(
+    max_new_tokens=64,
+    temperature=0.0,
+    top_p=1.0,
+    top_k=0,
+    min_p=0.0,
+    min_tokens_to_keep=1,
+)
+plain = run_one_prompt(
+    runner.target.model,
+    runner.target.tokenizer,
+    prompt_tokens.tolist(),
+    plain_args,
+)
+
+if dflash.text != plain.output_text:
+    raise SystemExit("FAIL: DFlash output differs from plain greedy target output.")
+if dflash.metrics["avg_acceptance_length"] <= 0:
+    raise SystemExit("FAIL: DFlash did not accept any draft tokens.")
+
+print("PASS: exact greedy smoke test matched plain target output.")
+PY
 ```
 
-For greedy decoding, the DFlash output (from `dflash-mlx`) and the plain target output (from `dflash-mlx-bench`) must match token-for-token on the same prompt at `--temperature 0`. If they diverge, the adapter is not exact and must not be listed as supported.
+Pass means all of the following are true:
+
+- `py_compile` exits cleanly.
+- `dflash-mlx` exits cleanly in exact `parallel-replay` mode.
+- Plain target generation exits cleanly for the same prompt and target.
+- For greedy decoding, the DFlash decoded output exactly matches plain target decoded output on the same prompt at `--temperature 0`.
+- The DFlash run reports a positive average acceptance length and does not use any inexact verifier mode.
+
+Fail means the decoded output differs, any command exits non-zero, or the adapter needs an inexact verifier path to run. If it fails, do not list the model as supported.
 
 ## 5. Add the README Row
 

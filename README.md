@@ -15,11 +15,12 @@ uv sync
 uv run dflash-mlx --max-new-tokens 128
 ```
 
-Defaults to Qwen3-4B BF16. Pass `--target-model` and `--draft-model` to override. `dflash-mlx-chat` for interactive chat, `--json` for machine-readable output. Benchmark history is opt-in with `--history` or `--history-file`.
+Defaults to Qwen3-4B BF16. First run downloads the target and draft checkpoints into the Hugging Face cache, which is roughly 12 GB for the default pair. Pass `--target-model` and `--draft-model` to override. `dflash-mlx-chat` for interactive chat, `--json` for machine-readable output. Benchmark history is opt-in with `--history` or `--history-file`.
 
 ```python
 from dflash_mlx import DFlashGenerator
 
+# First run also downloads the default Qwen3-4B target and DFlash draft weights.
 runner = DFlashGenerator()
 result = runner.generate("Write a quicksort in Python.", max_new_tokens=128)
 print(result.text)
