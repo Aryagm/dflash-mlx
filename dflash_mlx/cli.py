@@ -85,14 +85,16 @@ def parse_args() -> argparse.Namespace:
             "chunked",
             "parallel-replay",
             "parallel-lazy-logits",
+            "parallel-greedy-argmax",
             "accept-all",
         ],
         default="parallel-replay",
         help=(
-            "Verifier strategy. 'parallel-lazy-logits' keeps exact prefix checks "
-            "but computes verifier logits in chunks. 'accept-all' is experimental "
-            "and inexact: it trusts the full drafted block instead of checking "
-            "the accepted prefix."
+            "Verifier strategy. 'parallel-greedy-argmax' is exact and only "
+            "supports temperature=0. 'parallel-lazy-logits' keeps exact prefix "
+            "checks but computes verifier logits in chunks. 'accept-all' is "
+            "experimental and inexact: it trusts the full drafted block instead "
+            "of checking the accepted prefix."
         ),
     )
     parser.add_argument("--verify-chunk-size", type=int, default=4)

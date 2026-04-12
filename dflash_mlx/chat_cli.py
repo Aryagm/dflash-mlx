@@ -29,6 +29,7 @@ def parse_args() -> argparse.Namespace:
             "chunked",
             "parallel-replay",
             "parallel-lazy-logits",
+            "parallel-greedy-argmax",
             "accept-all",
         ],
         default="parallel-replay",

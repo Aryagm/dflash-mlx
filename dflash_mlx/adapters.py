@@ -264,6 +264,12 @@ class MLXTargetAdapter:
     def lm_head_logits(self, model, hidden_states: mx.array) -> mx.array:
         raise NotImplementedError
 
+    def lm_head_argmax(self, model, hidden_states: mx.array) -> mx.array:
+        # Hook for greedy verifier experiments; architecture-specific adapters
+        # can replace this with a fused top-1 LM-head kernel.
+        logits = self.lm_head_logits(model, hidden_states)
+        return mx.argmax(logits, axis=-1).astype(mx.uint32)
+
     def forward_with_hidden_states(
         self,
         model,
@@ -742,6 +748,9 @@ class LoadedTargetModel:
 
     def lm_head_logits(self, hidden_states: mx.array) -> mx.array:
         return self.adapter.lm_head_logits(self.model, hidden_states)
+
+    def lm_head_argmax(self, hidden_states: mx.array) -> mx.array:
+        return self.adapter.lm_head_argmax(self.model, hidden_states)
 
     def forward_with_hidden_states(
         self,

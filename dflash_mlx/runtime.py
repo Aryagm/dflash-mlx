@@ -233,6 +233,55 @@ def verify_block_parallel_lazy_logits(
     return accepted_inputs, posterior_token, verifier_hidden[:, :accepted_inputs, :]
 
 
+def verify_block_parallel_greedy_argmax(
+    target: LoadedTargetModel,
+    target_cache: list[Any],
+    block_tokens: list[int],
+    draft_block_size: int,
+    temperature: float,
+    layer_ids: list[int],
+    profile: dict[str, float] | None = None,
+) -> tuple[int, int, mx.array]:
+    if temperature >= 1e-5:
+        raise ValueError("parallel-greedy-argmax only supports temperature=0.")
+
+    state_start = profile_start(profile)
+    norm_hidden_states, verifier_hidden, rollback_records = target.forward_verifier_states(
+        mx.array(block_tokens, dtype=mx.uint32)[None],
+        target_cache,
+        layer_ids,
+    )
+    if profile is not None:
+        mx.eval(norm_hidden_states)
+    add_profile_elapsed(profile, "verify_state_time_s", state_start)
+
+    argmax_start = profile_start(profile)
+    posterior_tokens = target.lm_head_argmax(norm_hidden_states)
+    mx.eval(posterior_tokens)
+    add_profile_elapsed(profile, "verify_argmax_time_s", argmax_start)
+
+    prefix_start = profile_start(profile)
+    posterior = posterior_tokens[0].tolist()
+    matched = longest_prefix_match(block_tokens[1:], posterior[:-1])
+    accepted_inputs = matched + 1
+    add_profile_elapsed(profile, "verify_prefix_time_s", prefix_start)
+
+    if accepted_inputs < draft_block_size:
+        rollback_start = profile_start(profile)
+        rollback_tensors = flatten_rollback_tensors(rollback_records)
+        if rollback_tensors:
+            mx.eval(*rollback_tensors)
+        target.rewind_kv_caches(target_cache, draft_block_size - accepted_inputs)
+        target.rollback_linear_caches(
+            target_cache,
+            rollback_records,
+            accepted_inputs,
+        )
+        add_profile_elapsed(profile, "verify_rollback_time_s", rollback_start)
+
+    return accepted_inputs, posterior[matched], verifier_hidden[:, :accepted_inputs, :]
+
+
 def verify_block_accept_all(
     target: LoadedTargetModel,
     target_cache: list[Any],
@@ -414,6 +463,18 @@ def dflash_generate(
                     temperature=temperature,
                     layer_ids=layer_ids,
                     logit_chunk_size=verify_chunk_size,
+                    profile=profile_times,
+                )
+            )
+        elif verify_mode == "parallel-greedy-argmax":
+            accepted_inputs, posterior_token, verifier_hidden = (
+                verify_block_parallel_greedy_argmax(
+                    target=target,
+                    target_cache=target_cache,
+                    block_tokens=block_tokens,
+                    draft_block_size=block_size,
+                    temperature=temperature,
+                    layer_ids=layer_ids,
                     profile=profile_times,
                 )
             )
