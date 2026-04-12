@@ -70,7 +70,7 @@ ax.tick_params(left=False, bottom=False)
 fig.text(
     0.5,
     0.95,
-    "4.6\u00d7 faster Qwen3 on Mac \u2014 exact output",
+    "DFlash on Mac",
     fontsize=14,
     fontweight="bold",
     color="#e6eaf0",
