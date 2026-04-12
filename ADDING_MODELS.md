@@ -79,7 +79,7 @@ Before marking a model supported:
 
 ```bash
 uv run python -m py_compile dflash_mlx/*.py
-uv run dflash-mlx --target-model <target> --draft-model <draft> --max-new-tokens 64 --print-output --no-history
+uv run dflash-mlx --target-model <target> --draft-model <draft> --max-new-tokens 64 --print-output
 uv run dflash-mlx-bench --model <target> --prompt "Write a quicksort in Python." --max-new-tokens 64 --no-history
 ```
 

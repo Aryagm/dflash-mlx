@@ -118,13 +118,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--history-file",
         type=Path,
-        default=DEFAULT_HISTORY_PATH,
-        help="CSV file that accumulates benchmark history.",
+        default=None,
+        help=(
+            "Append run metrics to this CSV file. If omitted, no history is "
+            "written unless --history is passed."
+        ),
+    )
+    parser.add_argument(
+        "--history",
+        action="store_true",
+        help="Append run metrics to the default benchmark history CSV.",
     )
     parser.add_argument(
         "--no-history",
         action="store_true",
-        help="Do not append this run to the benchmark history CSV.",
+        help="Do not append this run to benchmark history. This is the default.",
     )
     parser.add_argument(
         "--experiment-tag",
@@ -140,10 +148,14 @@ def main() -> None:
     if args.prompt is not None and args.prompt_file is not None:
         raise SystemExit("Use either --prompt or --prompt-file, not both.")
     log = (lambda *items: None) if args.json else print
+    history_path = args.history_file or DEFAULT_HISTORY_PATH
+    record_history = (
+        args.history or args.history_file is not None
+    ) and not args.no_history
     history_meta = (
-        {}
-        if args.no_history
-        else run_metadata("dflash-mlx", experiment_tag=args.experiment_tag)
+        run_metadata("dflash-mlx", experiment_tag=args.experiment_tag)
+        if record_history
+        else {}
     )
     prompt_text = (
         args.prompt_file.read_text()
@@ -253,7 +265,7 @@ def main() -> None:
     log(f"Peak memory:              {metrics['peak_memory_gb']:.2f} GB")
     log("=" * 60)
 
-    if not args.no_history:
+    if record_history:
         history_row = {
             **history_meta,
             "record_type": "run",
@@ -280,8 +292,8 @@ def main() -> None:
             "speculative_tokens_arg": args.speculative_tokens,
             **metrics,
         }
-        append_rows(args.history_file, [history_row])
-        log(f"[history] appended 1 row to {args.history_file}")
+        append_rows(history_path, [history_row])
+        log(f"[history] appended 1 row to {history_path}")
 
     result_payload = {
         "text": result.text,

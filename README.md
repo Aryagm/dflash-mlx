@@ -15,7 +15,7 @@ uv sync
 uv run dflash-mlx --max-new-tokens 128
 ```
 
-Defaults to Qwen3-4B BF16. Pass `--target-model` and `--draft-model` to override. `dflash-mlx-chat` for interactive chat, `--json` for machine-readable output.
+Defaults to Qwen3-4B BF16. Pass `--target-model` and `--draft-model` to override. `dflash-mlx-chat` for interactive chat, `--json` for machine-readable output. Benchmark history is opt-in with `--history` or `--history-file`.
 
 ```python
 from dflash_mlx import DFlashGenerator
