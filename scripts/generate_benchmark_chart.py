@@ -79,7 +79,7 @@ fig.text(
 fig.text(
     0.5,
     0.88,
-    "4,028-token generation  \u00b7  MacBook Pro M4 Max, 36 GB",
+    "tok/s, higher is better  \u00b7  4,028-token generation  \u00b7  MacBook Pro M4 Max, 36 GB",
     fontsize=9.5,
     color="#6b7585",
     ha="center",
