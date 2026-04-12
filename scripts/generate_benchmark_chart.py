@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 # Single-prompt 4,028-token generation throughput, MacBook Pro M4 Max, 36 GB.
 # Exact DFlash: Qwen3-4B BF16 + z-lab/Qwen3-4B-DFlash-b16.
 entries = [
-    ("DFlash + MLX bf16", 186.4, "#5f8ff0"),
+    ("dflash-mlx bf16", 186.4, "#5f8ff0"),
     ("MLX-LM 4-bit", 110.5, "#454b68"),
     ("llama.cpp Q4_K_M", 97.8, "#454b68"),
     ("llama.cpp bf16", 41.1, "#454b68"),
@@ -37,7 +37,7 @@ fig.subplots_adjust(left=0.28, right=0.90, top=0.78, bottom=0.12)
 bars = ax.barh(range(len(entries)), values, height=0.54, color=colors, edgecolor="none")
 
 for i, (bar, val) in enumerate(zip(bars, values)):
-    is_ours = "DFlash" in labels[i]
+    is_ours = "dflash" in labels[i].lower()
     if is_ours:
         col = "#ffffff"
         weight = "bold"
@@ -58,7 +58,7 @@ for i, (bar, val) in enumerate(zip(bars, values)):
 ax.set_yticks(range(len(entries)))
 tick_labels = ax.set_yticklabels(labels, fontsize=10.0, color="#c0c8d4")
 for tick, label in zip(tick_labels, labels):
-    if "DFlash" in label:
+    if "dflash" in label.lower():
         tick.set_color("#ffffff")
         tick.set_fontweight("bold")
 ax.invert_yaxis()
