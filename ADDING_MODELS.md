@@ -83,7 +83,7 @@ uv run dflash-mlx --target-model <target> --draft-model <draft> --max-new-tokens
 uv run dflash-mlx-bench --model <target> --prompt "Write a quicksort in Python." --max-new-tokens 64 --no-history
 ```
 
-For greedy decoding, DFlash output must match the target verifier's accepted path. `--verify-mode accept-all` is not exact and must not be used to claim model support.
+For greedy decoding, the DFlash output (from `dflash-mlx`) and the plain target output (from `dflash-mlx-bench`) must match token-for-token on the same prompt at `--temperature 0`. If they diverge, the adapter is not exact and must not be listed as supported.
 
 ## 5. Add the README Row
 

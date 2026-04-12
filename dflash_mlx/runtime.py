@@ -282,26 +282,6 @@ def verify_block_parallel_greedy_argmax(
     return accepted_inputs, posterior[matched], verifier_hidden[:, :accepted_inputs, :]
 
 
-def verify_block_accept_all(
-    target: LoadedTargetModel,
-    target_cache: list[Any],
-    block_tokens: list[int],
-    temperature: float,
-    layer_ids: list[int],
-) -> tuple[int, int, mx.array]:
-    # Unsafe speed-first mode: trust every drafted token, but still run the
-    # target over the accepted block to keep target-side features/cache aligned.
-    posterior_logits, verifier_hidden = target.forward_accept_all_block(
-        mx.array(block_tokens, dtype=mx.uint32)[None],
-        target_cache,
-        layer_ids,
-    )
-    posterior_token_tensor = sample_tokens(posterior_logits[:, -1, :], temperature)
-    mx.eval(posterior_token_tensor, verifier_hidden)
-    posterior_token = int(posterior_token_tensor.item())
-    return len(block_tokens), posterior_token, verifier_hidden
-
-
 def verify_block_chunked(
     target: LoadedTargetModel,
     target_cache: list[Any],
@@ -387,8 +367,6 @@ def dflash_generate(
     prompt_len = int(prompt_tokens.shape[0])
     if speculative_tokens is None:
         block_size = draft.block_size
-    elif verify_mode == "accept-all":
-        block_size = max(1, speculative_tokens)
     else:
         block_size = max(1, min(speculative_tokens, draft.block_size))
 
@@ -444,14 +422,6 @@ def dflash_generate(
                 temperature=temperature,
                 layer_ids=layer_ids,
                 verify_chunk_size=verify_chunk_size,
-            )
-        elif verify_mode == "accept-all":
-            accepted_inputs, posterior_token, verifier_hidden = verify_block_accept_all(
-                target=target,
-                target_cache=target_cache,
-                block_tokens=block_tokens,
-                temperature=temperature,
-                layer_ids=layer_ids,
             )
         elif verify_mode == "parallel-lazy-logits":
             accepted_inputs, posterior_token, verifier_hidden = (

@@ -73,9 +73,7 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=None,
         help=(
-            "Number of draft tokens per step. Exact verifier modes clamp this to "
-            "the draft model block size; inexact accept-all mode allows larger "
-            "oversized blocks for speed experiments."
+            "Number of draft tokens per step. Clamped to the draft model block size."
         ),
     )
     parser.add_argument(
@@ -86,15 +84,12 @@ def parse_args() -> argparse.Namespace:
             "parallel-replay",
             "parallel-lazy-logits",
             "parallel-greedy-argmax",
-            "accept-all",
         ],
         default="parallel-replay",
         help=(
-            "Verifier strategy. 'parallel-greedy-argmax' is exact and only "
-            "supports temperature=0. 'parallel-lazy-logits' keeps exact prefix "
-            "checks but computes verifier logits in chunks. 'accept-all' is "
-            "experimental and inexact: it trusts the full drafted block instead "
-            "of checking the accepted prefix."
+            "Verifier strategy. All options are exact. 'parallel-greedy-argmax' "
+            "only supports temperature=0. 'parallel-lazy-logits' keeps exact "
+            "prefix checks but computes verifier logits in chunks."
         ),
     )
     parser.add_argument("--verify-chunk-size", type=int, default=4)
@@ -175,10 +170,8 @@ def main() -> None:
         if args.speculative_tokens is None
         else args.speculative_tokens
     )
-    effective_speculative_tokens = (
-        max(1, requested_speculative_tokens)
-        if args.verify_mode == "accept-all"
-        else max(1, min(requested_speculative_tokens, runner.draft.block_size))
+    effective_speculative_tokens = max(
+        1, min(requested_speculative_tokens, runner.draft.block_size)
     )
 
     log(
@@ -193,19 +186,6 @@ def main() -> None:
             "Use --warmup-runs 1 for benchmark-style numbers; add "
             "--warmup-max-new-tokens for long generations."
         )
-    if args.verify_mode == "accept-all":
-        log(
-            "[warning] accept-all is inexact: it trusts drafted blocks and may "
-            "diverge from target-model output."
-        )
-        if effective_speculative_tokens > runner.draft.block_size:
-            log(
-                "[warning] oversized accept-all block: this draft checkpoint is "
-                f"configured for block_size={runner.draft.block_size}, but "
-                f"speculative_tokens={effective_speculative_tokens}. This is a "
-                "raw throughput probe, not lossless DFlash."
-            )
-
     warmup_max_new_tokens = (
         args.max_new_tokens
         if args.warmup_max_new_tokens is None
