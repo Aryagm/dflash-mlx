@@ -32,7 +32,7 @@ mpl.rcParams.update({
 })
 
 fig, ax = plt.subplots(figsize=(8.2, 4.2))
-fig.subplots_adjust(left=0.28, right=0.90, top=0.78, bottom=0.12)
+fig.subplots_adjust(left=0.28, right=0.90, top=0.83, bottom=0.08)
 
 bars = ax.barh(range(len(entries)), values, height=0.54, color=colors, edgecolor="none")
 
