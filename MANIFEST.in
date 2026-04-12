@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include ADDING_MODELS.md
+recursive-include assets *.png
+recursive-include benchmarks *.csv *.md
+recursive-include scripts *.py

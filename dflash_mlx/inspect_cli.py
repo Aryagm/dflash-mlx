@@ -23,10 +23,8 @@ def read_config(path_or_repo: str) -> tuple[dict[str, Any], str]:
 
 
 def support_status(model_type: str | None) -> str:
-    if model_type == "qwen3_5":
+    if model_type in {"qwen3", "qwen3_5"}:
         return "supported"
-    if model_type == "qwen3":
-        return "experimental"
     return "unsupported"
 
 

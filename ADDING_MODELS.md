@@ -7,7 +7,7 @@
 
 The draft model predicts a block. The target model verifies that block and returns the hidden states needed to condition the next draft.
 
-Current exact support is centered on Qwen3.5-4B. Other upstream DFlash models are not automatically supported until their MLX target family has an adapter and exactness validation.
+Current exact support is centered on Qwen3-4B. Qwen3.5-4B remains supported, but is no longer the default benchmark target. Other upstream DFlash models are not automatically supported until their MLX target family has an adapter and exactness validation.
 
 ## 1. Check the Pair
 
@@ -24,7 +24,7 @@ uv run python - <<'PY'
 from huggingface_hub import snapshot_download
 import json
 
-path = snapshot_download("mlx-community/Qwen3.5-4B-MLX-bf16")
+path = snapshot_download("mlx-community/Qwen3-4B-bf16")
 config = json.load(open(f"{path}/config.json"))
 print(config["model_type"])
 print(config.get("model_file"))

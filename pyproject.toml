@@ -1,11 +1,30 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "dflash-mlx"
 version = "0.1.0"
 description = "DFlash speculative decoding on Apple Silicon with MLX"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Arya Manjaramkar" },
+]
+keywords = [
+    "apple-silicon",
+    "dflash",
+    "mlx",
+    "speculative-decoding",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 requires-python = ">=3.10"
 dependencies = [
     "mlx",
@@ -14,6 +33,11 @@ dependencies = [
     "datasets",
     "numpy",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Aryagm/dflash-mlx"
+Repository = "https://github.com/Aryagm/dflash-mlx"
+Issues = "https://github.com/Aryagm/dflash-mlx/issues"
 
 [project.scripts]
 dflash-mlx = "dflash_mlx.cli:main"
@@ -24,3 +48,8 @@ dflash-mlx-prepare-model = "dflash_mlx.model_prep:main"
 
 [tool.setuptools.packages.find]
 include = ["dflash_mlx*"]
+
+[project.optional-dependencies]
+charts = [
+    "matplotlib",
+]

@@ -38,7 +38,9 @@ The original DFlash targets CUDA. `dflash-mlx` is a native MLX port for Apple Si
 | Qwen3-4B (default) | `z-lab/Qwen3-4B-DFlash-b16` |
 | Qwen3.5-4B | `z-lab/Qwen3.5-4B-DFlash` |
 
-Upstream DFlash has checkpoints for Llama 3.1, Qwen3 Coder, Kimi-K2.5, GPT-OSS, and more in the [Hugging Face collection](https://huggingface.co/collections/z-lab/dflash). Adding a new family is a single adapter in `dflash_mlx/adapters.py` &mdash; see [ADDING_MODELS.md](ADDING_MODELS.md).
+Qwen3.5 support is functional but incomplete. It is not as fast as the Qwen3 path today because Qwen3.5 uses a more complicated hybrid attention stack with recurrent linear-attention state, so exact partial-block acceptance needs custom cache rollback and currently has weaker long-generation acceptance.
+
+Upstream DFlash has checkpoints for Llama 3.1, Qwen3 Coder, Kimi-K2.5, GPT-OSS, and more in the [Hugging Face collection](https://huggingface.co/collections/z-lab/dflash). Adding a new family starts with an adapter in `dflash_mlx/adapters.py` &mdash; see [ADDING_MODELS.md](ADDING_MODELS.md).
 
 ## Benchmarks
 

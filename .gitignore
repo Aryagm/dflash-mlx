@@ -7,3 +7,4 @@ cache/
 *.pyc
 dist/
 build/
+marketing/

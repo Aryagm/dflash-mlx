@@ -2,8 +2,8 @@ from dflash_mlx import DFlashGenerator
 
 
 runner = DFlashGenerator(
-    target_model="mlx-community/Qwen3.5-4B-MLX-bf16",
-    draft_model="z-lab/Qwen3.5-4B-DFlash",
+    target_model="mlx-community/Qwen3-4B-bf16",
+    draft_model="z-lab/Qwen3-4B-DFlash-b16",
 )
 
 result = runner.generate(
