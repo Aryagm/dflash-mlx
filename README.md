@@ -14,7 +14,7 @@ Best logged warm 128-token Qwen3.5-4B BF16 benchmark on MacBook Pro M4 Max, 36 G
 | MLX-LM BF16 | 40.6 | 1.0x |
 | **DFlash + MLX BF16** | **100.5** | **2.5x** |
 
-> These are best logged warm generation tok/s numbers on the built-in short prompt. Cold first runs include MLX compilation overhead, and long continuations depend on acceptance length, so benchmark your exact workload. Quantized targets are supported, but quantized speedups are workload-dependent until adaptive fallback lands.
+> These are best logged warm generation tok/s numbers on the built-in short prompt. Cold first runs include MLX compilation overhead, and long continuations depend on acceptance length, so benchmark your exact workload.
 
 ## How it works
 
@@ -93,8 +93,10 @@ Today this repo is focused on Qwen3.5-4B. Other upstream DFlash checkpoints need
 | Target | Draft | Status |
 |---|---|---|
 | `mlx-community/Qwen3.5-4B-MLX-bf16` | `z-lab/Qwen3.5-4B-DFlash` | Supported, headline path |
-| `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Supported, workload-dependent speedup |
-| `mlx-community/Qwen3-4B-{bf16,8bit,4bit}` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental adapter |
+| `mlx-community/Qwen3.5-4B-MLX-4bit` | `z-lab/Qwen3.5-4B-DFlash` | Supported, later optimization target |
+| `mlx-community/Qwen3-4B-bf16` | `z-lab/Qwen3-4B-DFlash-b16` | Experimental adapter |
+
+Quantized targets are intentionally not the headline path right now. They can be very fast, but exact DFlash speedups are more workload-dependent there; we will revisit them after BF16 verifier optimization and adaptive fallback.
 
 Upstream DFlash checkpoints exist for Llama 3.1, Qwen3 Coder, Kimi-K2.5, GPT-OSS, and more ([HF collection](https://huggingface.co/collections/z-lab/dflash)). Adding a new family starts with an adapter and may need a custom MLX model shim if cache rollback is architecture-specific; see [ADDING_MODELS.md](ADDING_MODELS.md).
 

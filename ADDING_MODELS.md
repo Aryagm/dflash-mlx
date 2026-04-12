@@ -24,7 +24,7 @@ uv run python - <<'PY'
 from huggingface_hub import snapshot_download
 import json
 
-path = snapshot_download("mlx-community/Qwen3.5-4B-MLX-4bit")
+path = snapshot_download("mlx-community/Qwen3.5-4B-MLX-bf16")
 config = json.load(open(f"{path}/config.json"))
 print(config["model_type"])
 print(config.get("model_file"))
