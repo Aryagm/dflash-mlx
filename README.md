@@ -6,9 +6,9 @@ Lossless speculative decoding on Apple Silicon. **Same output as the target mode
 
 https://github.com/user-attachments/assets/13411079-7ffd-4f3f-a3cd-fdf3dd44a537
 
-Warm 128-token Qwen3.5-4B benchmark on MacBook Pro M4 Max, 36 GB:
+Best logged warm 128-token Qwen3.5-4B benchmark on MacBook Pro M4 Max, 36 GB:
 
-| | tok/s | vs llama.cpp |
+| | generation tok/s | vs llama.cpp |
 |---|---:|---:|
 | **bf16** | | |
 | llama.cpp | 35.6 | 1.0x |
@@ -19,7 +19,7 @@ Warm 128-token Qwen3.5-4B benchmark on MacBook Pro M4 Max, 36 GB:
 | MLX-LM | 119.4 | 1.6x |
 | **DFlash + MLX** | **161.9** | **2.1x** |
 
-> These are warm generation tok/s numbers on the built-in short prompt. Cold first runs include MLX compilation overhead, and long continuations depend on acceptance length, so benchmark your exact workload.
+> These are best logged warm generation tok/s numbers on the built-in short prompt. Cold first runs include MLX compilation overhead, and long continuations depend on acceptance length, so benchmark your exact workload.
 
 ## How it works
 
