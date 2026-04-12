@@ -1,12 +1,12 @@
 # dflash-mlx
 
-Lossless speculative decoding on Apple Silicon. **Same output as the target model, just faster.**
+Lossless speculative decoding on Apple Silicon. **Same output as the target model, faster when the draft is accepted.**
 
 ![Benchmarks](assets/benchmark-chart.png)
 
 https://github.com/user-attachments/assets/13411079-7ffd-4f3f-a3cd-fdf3dd44a537
 
-Qwen3.5-4B on MacBook Pro M4 Max, 36 GB:
+Warm 128-token Qwen3.5-4B benchmark on MacBook Pro M4 Max, 36 GB:
 
 | | tok/s | vs llama.cpp |
 |---|---:|---:|
@@ -19,7 +19,7 @@ Qwen3.5-4B on MacBook Pro M4 Max, 36 GB:
 | MLX-LM | 119.4 | 1.6x |
 | **DFlash + MLX** | **161.9** | **2.1x** |
 
-> Absolute numbers vary by chip. The speedup ratios are what matter.
+> These are warm generation tok/s numbers on the built-in short prompt. Cold first runs include MLX compilation overhead, and long continuations depend on acceptance length, so benchmark your exact workload.
 
 ## How it works
 
@@ -36,7 +36,20 @@ uv sync
 uv run dflash-mlx \
   --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
   --draft-model z-lab/Qwen3.5-4B-DFlash \
-  --max-new-tokens 128
+  --max-new-tokens 128 \
+  --warmup-runs 1 \
+  --no-history
+```
+
+If you omit `--warmup-runs`, the first run is a cold smoke test and will be lower than the chart because MLX kernel compilation is included. For long generations, warm the kernels without doing a full-length warmup:
+
+```bash
+uv run dflash-mlx \
+  --target-model mlx-community/Qwen3.5-4B-MLX-4bit \
+  --draft-model z-lab/Qwen3.5-4B-DFlash \
+  --max-new-tokens 4096 \
+  --warmup-runs 1 \
+  --warmup-max-new-tokens 128
 ```
 
 Machine-readable output:
@@ -47,6 +60,7 @@ uv run dflash-mlx \
   --draft-model z-lab/Qwen3.5-4B-DFlash \
   --prompt "Write a quicksort in Python." \
   --max-new-tokens 128 \
+  --warmup-runs 1 \
   --json \
   --no-history
 ```

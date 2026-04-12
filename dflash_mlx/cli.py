@@ -52,7 +52,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--warmup-runs", type=int, default=0)
+    parser.add_argument(
+        "--warmup-runs",
+        type=int,
+        default=0,
+        help="Warmup runs before the measured run. Benchmark rows use warm runs.",
+    )
+    parser.add_argument(
+        "--warmup-max-new-tokens",
+        type=int,
+        default=None,
+        help=(
+            "Generated tokens per warmup run. Defaults to --max-new-tokens; set "
+            "this lower for long generations so you warm kernels without doing "
+            "a full-length warmup."
+        ),
+    )
     parser.add_argument(
         "--speculative-tokens",
         type=int,
@@ -165,6 +180,12 @@ def main() -> None:
         f"speculative_tokens={effective_speculative_tokens} "
         f"max_new_tokens={args.max_new_tokens} temperature={args.temperature}"
     )
+    if args.warmup_runs == 0:
+        log(
+            "[note] cold run: first-run compile/prefill overhead is included. "
+            "Use --warmup-runs 1 for benchmark-style numbers; add "
+            "--warmup-max-new-tokens for long generations."
+        )
     if args.verify_mode == "accept-all":
         log(
             "[warning] accept-all is inexact: it trusts drafted blocks and may "
@@ -178,10 +199,20 @@ def main() -> None:
                 "raw throughput probe, not lossless DFlash."
             )
 
+    warmup_max_new_tokens = (
+        args.max_new_tokens
+        if args.warmup_max_new_tokens is None
+        else args.warmup_max_new_tokens
+    )
+    if args.warmup_runs > 0:
+        log(
+            f"[warmup] runs={args.warmup_runs} "
+            f"max_new_tokens={warmup_max_new_tokens}"
+        )
     for warmup_idx in range(args.warmup_runs):
         warm_result = runner.generate_from_tokens(
             prompt_tokens=prompt_tokens,
-            max_new_tokens=args.max_new_tokens,
+            max_new_tokens=warmup_max_new_tokens,
             temperature=args.temperature,
             speculative_tokens=args.speculative_tokens,
             verify_mode=args.verify_mode,
@@ -253,6 +284,7 @@ def main() -> None:
             "temperature": args.temperature,
             "seed": args.seed,
             "warmup_runs": args.warmup_runs,
+            "warmup_max_new_tokens": warmup_max_new_tokens,
             "verify_mode": args.verify_mode,
             "verify_chunk_size": args.verify_chunk_size,
             "speculative_tokens_arg": args.speculative_tokens,
@@ -271,6 +303,8 @@ def main() -> None:
         "resolved_draft_path": str(runner.draft_path),
         "draft_attention_mask": runner.draft_attention_mask,
         "draft_quantization": runner.draft_quantization or {},
+        "warmup_max_new_tokens": warmup_max_new_tokens,
+        "warmup_runs": args.warmup_runs,
         "verify_mode": args.verify_mode,
     }
 
