@@ -120,14 +120,9 @@ class DFlashAttention(nn.Module):
             queries.reshape(batch_size, query_len, self.n_heads, self.head_dim)
         ).transpose(0, 2, 1, 3)
 
-        keys = mx.concatenate(
-            [self.k_proj(target_hidden), self.k_proj(hidden_states)],
-            axis=1,
-        )
-        values = mx.concatenate(
-            [self.v_proj(target_hidden), self.v_proj(hidden_states)],
-            axis=1,
-        )
+        kv_states = mx.concatenate([target_hidden, hidden_states], axis=1)
+        keys = self.k_proj(kv_states)
+        values = self.v_proj(kv_states)
         keys = self.k_norm(
             keys.reshape(
                 batch_size,
