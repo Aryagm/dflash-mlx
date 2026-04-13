@@ -719,6 +719,13 @@ class Qwen3TargetAdapter(MLXTargetAdapter):
 ADAPTERS: dict[str, type[MLXTargetAdapter]] = {
     "qwen3": Qwen3TargetAdapter,
     "qwen3_5": Qwen35TargetAdapter,
+    "qwen3_5_text": Qwen35TargetAdapter,
+}
+
+# Aliases for model_type values that mlx_lm doesn't recognise natively.
+# Maps unsupported config model_type -> canonical model_type that mlx_lm can load.
+MODEL_TYPE_ALIASES: dict[str, str] = {
+    "qwen3_5_text": "qwen3_5",
 }
 
 
@@ -843,6 +850,16 @@ def load_target_model(path_or_repo: str) -> LoadedTargetModel:
 
     adapter = adapter_cls()
     resolved_model_path = adapter.resolve_target_model_path(path_or_repo)
+
+    # Rewrite model_type in the on-disk config when mlx_lm won't recognise it.
+    canonical = MODEL_TYPE_ALIASES.get(model_type)
+    if canonical is not None:
+        config_path = resolved_model_path / "config.json"
+        cfg = json.loads(config_path.read_text())
+        if cfg.get("model_type") != canonical:
+            cfg["model_type"] = canonical
+            config_path.write_text(json.dumps(cfg, indent=2) + "\n")
+
     model, tokenizer = load(str(resolved_model_path))
     return LoadedTargetModel(
         requested_model=path_or_repo,
