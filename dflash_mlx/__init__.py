@@ -4,6 +4,7 @@ from .adapters import LoadedTargetModel, adapter_for_model_type, load_target_mod
 from .api import DFlashGenerator, DFlashResult
 from .draft import DFlashDraftModel, load_draft_model
 from .runtime import dflash_generate, longest_prefix_match, sample_tokens
+from . import openai_server
 
 __all__ = [
     "DFlashGenerator",
