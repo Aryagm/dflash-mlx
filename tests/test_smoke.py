@@ -12,16 +12,21 @@ def test_public_api_importable():
     import dflash_mlx
 
     expected = {
+        "DDTreeConfig",
         "DFlashGenerator",
         "DFlashResult",
         "DFlashDraftModel",
+        "DraftTree",
         "LoadedTargetModel",
         "adapter_for_model_type",
+        "build_draft_tree",
         "dflash_generate",
+        "ddtree_generate",
         "load_draft_model",
         "load_target_model",
         "longest_prefix_match",
         "sample_tokens",
+        "walk_tree",
     }
     assert expected.issubset(set(dflash_mlx.__all__))
     for name in expected:

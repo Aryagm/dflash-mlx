@@ -6,6 +6,7 @@ from typing import Any
 import mlx.core as mx
 
 from .adapters import LoadedTargetModel
+from .bet_optimal_drafting import BODConfig, BODController
 from .draft import DFlashDraftModel
 
 
@@ -359,6 +360,8 @@ def dflash_generate(
     verify_mode: str,
     verify_chunk_size: int,
     profile: bool = False,
+    use_bod: bool = False,
+    bod_config: BODConfig | None = None,
 ) -> tuple[list[int], dict[str, Any]]:
     target_cache = target.make_cache()
     draft_cache = draft.make_cache()
@@ -369,6 +372,11 @@ def dflash_generate(
         block_size = draft.block_size
     else:
         block_size = max(1, min(speculative_tokens, draft.block_size))
+
+    bod: BODController | None = None
+    if use_bod:
+        bod_cfg = bod_config or BODConfig(mode="chain", min_bet=2, max_bet=block_size)
+        bod = BODController(bod_cfg)
 
     sync_start = time.perf_counter()
     logits, target_hidden = target.forward_with_hidden_states(
@@ -386,6 +394,10 @@ def dflash_generate(
 
     decode_start = time.perf_counter()
     while start < total_max_tokens:
+        if bod is not None:
+            block_size = bod.optimal_bet()
+            block_size = max(2, min(block_size, draft.block_size))
+
         draft_start = profile_start(profile_times)
         block_tokens = [output_tokens[start]] + [draft.mask_token_id] * (block_size - 1)
         block_input = mx.array(block_tokens, dtype=mx.uint32)[None]
@@ -404,6 +416,7 @@ def dflash_generate(
         block_tokens[1:] = drafted_suffix[: block_size - 1]
         add_profile_elapsed(profile_times, "draft_time_s", draft_start)
 
+        verify_wall_start = time.perf_counter()
         verify_start = profile_start(profile_times)
         if verify_mode == "stream":
             accepted_inputs, posterior_token, verifier_hidden = verify_block_stream(
@@ -472,6 +485,20 @@ def dflash_generate(
         output_tokens.extend(block_tokens[:accepted_inputs])
         output_tokens.append(posterior_token)
         start += accepted_inputs
+
+        if bod is not None:
+            draft_wall_ms = (verify_wall_start - draft_start) * 1000
+            verify_wall_ms = (time.perf_counter() - verify_wall_start) * 1000
+            cycle_time_ms = draft_wall_ms + verify_wall_ms
+            bod.observe(
+                bet=block_size,
+                accepted=accepted_inputs,
+                cycle_time_ms=cycle_time_ms,
+                draft_time_ms=draft_wall_ms,
+                verify_time_ms=verify_wall_ms,
+                confidence=float(mx.max(mx.softmax(draft_logits[:, 0, :])).item()),
+            )
+
         add_profile_elapsed(
             profile_times,
             "bookkeeping_time_s",
@@ -506,7 +533,10 @@ def dflash_generate(
         "peak_memory_gb": peak_memory_gb(),
         "target_cache_summary": target.cache_summary(target_cache),
         "speculative_tokens": block_size,
+        "use_bod": use_bod,
     }
+    if bod is not None:
+        metrics["bod_final_gamma"] = block_size
     if profile_times is not None:
         profiled_time = sum(
             profile_times.get(key, 0.0)

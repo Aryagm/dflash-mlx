@@ -86,15 +86,42 @@ def parse_args() -> argparse.Namespace:
             "parallel-replay",
             "parallel-lazy-logits",
             "parallel-greedy-argmax",
+            "ddtree",
         ],
         default="parallel-replay",
         help=(
             "Verifier strategy. All options are exact. 'parallel-greedy-argmax' "
-            "only supports temperature=0. 'parallel-lazy-logits' keeps exact "
-            "prefix checks but computes verifier logits in chunks."
+            "only supports temperature=0. 'ddtree' enables Diffusion Draft Tree "
+            "(DDTree) verification with a configurable node budget."
         ),
     )
     parser.add_argument("--verify-chunk-size", type=int, default=4)
+    parser.add_argument(
+        "--ddtree-budget",
+        type=int,
+        default=64,
+        help=(
+            "DDTree node budget B. Controls how many candidate tokens the "
+            "tree verifier evaluates per round. Only used with --verify-mode ddtree."
+        ),
+    )
+    parser.add_argument(
+        "--ddtree-use-bod",
+        action="store_true",
+        help=(
+            "Enable Bet-Optimal Drafting (BOD) in tree mode to dynamically "
+            "select the DDTree node budget. Only used with --verify-mode ddtree."
+        ),
+    )
+    parser.add_argument(
+        "--use-bod",
+        action="store_true",
+        help=(
+            "Enable Bet-Optimal Drafting (BOD) in chain mode to dynamically "
+            "select the draft length gamma. Only used with vanilla DFlash "
+            "(not --verify-mode ddtree)."
+        ),
+    )
     parser.add_argument("--draft-quant-bits", type=int, default=None)
     parser.add_argument("--draft-quant-group-size", type=int, default=64)
     parser.add_argument(
@@ -221,6 +248,9 @@ def main() -> None:
             verify_mode=args.verify_mode,
             verify_chunk_size=args.verify_chunk_size,
             reset_peak_memory=False,
+            ddtree_budget=args.ddtree_budget,
+            ddtree_use_bod=args.ddtree_use_bod,
+            use_bod=args.use_bod,
         )
         log(
             f"[warmup {warmup_idx + 1}/{args.warmup_runs}] "
@@ -236,6 +266,9 @@ def main() -> None:
         verify_mode=args.verify_mode,
         verify_chunk_size=args.verify_chunk_size,
         profile=args.profile,
+        ddtree_budget=args.ddtree_budget,
+        ddtree_use_bod=args.ddtree_use_bod,
+        use_bod=args.use_bod,
     )
     metrics = result.metrics
 
@@ -254,6 +287,16 @@ def main() -> None:
     log(f"Verify mode:              {args.verify_mode}")
     if args.verify_mode in {"chunked", "parallel-lazy-logits"}:
         log(f"Verify chunk size:        {args.verify_chunk_size}")
+    if args.verify_mode == "ddtree":
+        log(f"DDTree budget:            {args.ddtree_budget}")
+        if args.ddtree_use_bod:
+            log(f"DDTree BOD:               enabled")
+            if "bod_final_budget" in metrics:
+                log(f"DDTree BOD final budget:  {metrics['bod_final_budget']}")
+    if args.use_bod and args.verify_mode != "ddtree":
+        log(f"BOD (chain mode):         enabled")
+        if "bod_final_gamma" in metrics:
+            log(f"BOD final gamma:          {metrics['bod_final_gamma']}")
     log(f"Prompt tokens:            {metrics['num_input_tokens']}")
     log(f"Generated tokens:         {metrics['num_output_tokens']}")
     log(f"Prefill time:             {metrics['prefill_time_s']:.2f}s")
