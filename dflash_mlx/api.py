@@ -8,6 +8,7 @@ import mlx.core as mx
 from mlx_lm.generate import wired_limit
 
 from .adapters import LoadedTargetModel, load_target_model
+from .ddtree import DDTreeConfig, ddtree_generate
 from .draft import DFlashDraftModel, load_draft_model, maybe_quantize_draft_model
 from .runtime import dflash_generate
 
@@ -71,23 +72,44 @@ class DFlashGenerator:
         reset_peak_memory: bool = True,
         skip_special_tokens: bool = False,
         profile: bool = False,
+        ddtree_budget: int = 64,
+        ddtree_use_bod: bool = False,
+        use_bod: bool = False,
     ) -> DFlashResult:
         with wired_limit(self.target.model):
             if reset_peak_memory:
                 mx.reset_peak_memory()
-            output_tokens, metrics = dflash_generate(
-                target=self.target,
-                draft=self.draft,
-                prompt_tokens=prompt_tokens,
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                stop_token_ids=self.target.stop_token_ids(),
-                layer_ids=self.draft.target_layer_ids,
-                speculative_tokens=speculative_tokens,
-                verify_mode=verify_mode,
-                verify_chunk_size=verify_chunk_size,
-                profile=profile,
-            )
+            if verify_mode == "ddtree":
+                ddtree_cfg = DDTreeConfig(
+                    budget=ddtree_budget,
+                    use_bod=ddtree_use_bod,
+                    profile=profile,
+                )
+                output_tokens, metrics = ddtree_generate(
+                    target=self.target,
+                    draft=self.draft,
+                    prompt_tokens=prompt_tokens,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                    stop_token_ids=self.target.stop_token_ids(),
+                    layer_ids=self.draft.target_layer_ids,
+                    config=ddtree_cfg,
+                )
+            else:
+                output_tokens, metrics = dflash_generate(
+                    target=self.target,
+                    draft=self.draft,
+                    prompt_tokens=prompt_tokens,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                    stop_token_ids=self.target.stop_token_ids(),
+                    layer_ids=self.draft.target_layer_ids,
+                    speculative_tokens=speculative_tokens,
+                    verify_mode=verify_mode,
+                    verify_chunk_size=verify_chunk_size,
+                    profile=profile,
+                    use_bod=use_bod,
+                )
 
         generated_tokens = output_tokens[metrics["num_input_tokens"] :]
         text = self.target.tokenizer.decode(
@@ -112,6 +134,9 @@ class DFlashGenerator:
         reset_peak_memory: bool = True,
         skip_special_tokens: bool = False,
         profile: bool = False,
+        ddtree_budget: int = 64,
+        ddtree_use_bod: bool = False,
+        use_bod: bool = False,
     ) -> DFlashResult:
         return self.generate_from_tokens(
             prompt_tokens=self.encode_prompt(prompt_text),
@@ -123,4 +148,7 @@ class DFlashGenerator:
             reset_peak_memory=reset_peak_memory,
             skip_special_tokens=skip_special_tokens,
             profile=profile,
+            ddtree_budget=ddtree_budget,
+            ddtree_use_bod=ddtree_use_bod,
+            use_bod=use_bod,
         )

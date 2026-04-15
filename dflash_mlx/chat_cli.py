@@ -30,10 +30,13 @@ def parse_args() -> argparse.Namespace:
             "parallel-replay",
             "parallel-lazy-logits",
             "parallel-greedy-argmax",
+            "ddtree",
         ],
         default="parallel-replay",
     )
     parser.add_argument("--verify-chunk-size", type=int, default=4)
+    parser.add_argument("--ddtree-budget", type=int, default=64)
+    parser.add_argument("--ddtree-use-bod", action="store_true")
     parser.add_argument("--max-turns", type=int, default=6)
     parser.add_argument("--show-stats", action="store_true")
     return parser.parse_args()
@@ -93,6 +96,8 @@ def main() -> None:
             verify_mode=args.verify_mode,
             verify_chunk_size=args.verify_chunk_size,
             skip_special_tokens=True,
+            ddtree_budget=args.ddtree_budget,
+            ddtree_use_bod=args.ddtree_use_bod,
         )
         answer = result.text.strip()
         print(f"assistant> {answer}\n")
