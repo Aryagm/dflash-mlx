@@ -35,6 +35,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--verify-chunk-size", type=int, default=4)
     parser.add_argument("--max-turns", type=int, default=6)
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Print assistant text as soon as verified tokens are committed.",
+    )
     parser.add_argument("--show-stats", action="store_true")
     return parser.parse_args()
 
@@ -85,19 +90,43 @@ def main() -> None:
             continue
 
         prompt = build_prompt(history, user_message, args.max_turns)
-        result = runner.generate(
-            prompt,
-            max_new_tokens=args.max_new_tokens,
-            temperature=args.temperature,
-            speculative_tokens=args.speculative_tokens,
-            verify_mode=args.verify_mode,
-            verify_chunk_size=args.verify_chunk_size,
-            skip_special_tokens=True,
-        )
-        answer = result.text.strip()
-        print(f"assistant> {answer}\n")
-        if args.show_stats:
+        if args.stream:
+            print("assistant> ", end="", flush=True)
+            final_event = None
+            for event in runner.stream(
+                prompt,
+                max_new_tokens=args.max_new_tokens,
+                temperature=args.temperature,
+                speculative_tokens=args.speculative_tokens,
+                verify_mode=args.verify_mode,
+                verify_chunk_size=args.verify_chunk_size,
+                skip_special_tokens=True,
+            ):
+                if event.finished:
+                    if event.delta:
+                        print(event.delta, end="", flush=True)
+                    final_event = event
+                elif event.delta:
+                    print(event.delta, end="", flush=True)
+            print("\n")
+            if final_event is None or final_event.metrics is None:
+                raise RuntimeError("Streaming generation did not produce a final event.")
+            answer = final_event.text.strip()
+            metrics = final_event.metrics
+        else:
+            result = runner.generate(
+                prompt,
+                max_new_tokens=args.max_new_tokens,
+                temperature=args.temperature,
+                speculative_tokens=args.speculative_tokens,
+                verify_mode=args.verify_mode,
+                verify_chunk_size=args.verify_chunk_size,
+                skip_special_tokens=True,
+            )
+            answer = result.text.strip()
             metrics = result.metrics
+            print(f"assistant> {answer}\n")
+        if args.show_stats:
             print(
                 "[stats] "
                 f"gen_tps={metrics['generation_tps']:.2f} "

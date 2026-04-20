@@ -14,10 +14,12 @@ def test_public_api_importable():
     expected = {
         "DFlashGenerator",
         "DFlashResult",
+        "DFlashStreamEvent",
         "DFlashDraftModel",
         "LoadedTargetModel",
         "adapter_for_model_type",
         "dflash_generate",
+        "dflash_generate_stream",
         "load_draft_model",
         "load_target_model",
         "longest_prefix_match",
@@ -50,5 +52,18 @@ def test_cli_verify_mode_choices_exclude_unsafe_modes():
             sys.argv = [module.__name__]
             args = module.parse_args()
             assert args.verify_mode == "parallel-replay"
+    finally:
+        sys.argv = saved_argv
+
+
+def test_cli_stream_flags_parse():
+    from dflash_mlx import chat_cli, cli
+
+    saved_argv = sys.argv
+    try:
+        for module in (cli, chat_cli):
+            sys.argv = [module.__name__, "--stream"]
+            args = module.parse_args()
+            assert args.stream is True
     finally:
         sys.argv = saved_argv

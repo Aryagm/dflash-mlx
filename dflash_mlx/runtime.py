@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from dataclasses import dataclass
 import time
 from typing import Any
 
@@ -7,6 +9,14 @@ import mlx.core as mx
 
 from .adapters import LoadedTargetModel
 from .draft import DFlashDraftModel
+
+
+@dataclass
+class DFlashRuntimeEvent:
+    token_ids: list[int]
+    output_tokens: list[int]
+    metrics: dict[str, Any] | None = None
+    finished: bool = False
 
 
 def sample_tokens(logits: mx.array, temperature: float) -> mx.array:
@@ -347,7 +357,7 @@ def verify_block_chunked(
     raise RuntimeError("Chunked verifier reached an impossible state.")
 
 
-def dflash_generate(
+def dflash_generate_stream(
     target: LoadedTargetModel,
     draft: DFlashDraftModel,
     prompt_tokens: mx.array,
@@ -359,7 +369,7 @@ def dflash_generate(
     verify_mode: str,
     verify_chunk_size: int,
     profile: bool = False,
-) -> tuple[list[int], dict[str, Any]]:
+) -> Iterator[DFlashRuntimeEvent]:
     target_cache = target.make_cache()
     draft_cache = draft.make_cache()
     profile_times: dict[str, float] | None = {} if profile else None
@@ -382,7 +392,15 @@ def dflash_generate(
 
     output_tokens = prompt_tokens.tolist() + [first_token]
     start = prompt_len
+    streamed_len = prompt_len
     acceptance_lengths: list[int] = []
+
+    if max_new_tokens > 0:
+        yield DFlashRuntimeEvent(
+            token_ids=output_tokens[streamed_len:],
+            output_tokens=list(output_tokens),
+        )
+        streamed_len = len(output_tokens)
 
     decode_start = time.perf_counter()
     while start < total_max_tokens:
@@ -479,12 +497,24 @@ def dflash_generate(
         )
 
         stop_idx = stop_position(output_tokens, prompt_len, stop_token_ids)
+        finished = False
         if stop_idx is not None:
             output_tokens = output_tokens[: stop_idx + 1]
-            break
+            finished = True
 
         if len(output_tokens) > total_max_tokens:
             output_tokens = output_tokens[:total_max_tokens]
+            finished = True
+
+        token_ids = output_tokens[streamed_len:]
+        if token_ids:
+            yield DFlashRuntimeEvent(
+                token_ids=token_ids,
+                output_tokens=list(output_tokens),
+            )
+            streamed_len = len(output_tokens)
+
+        if finished:
             break
 
     decode_time = time.perf_counter() - decode_start
@@ -517,4 +547,43 @@ def dflash_generate(
             "unattributed_decode_time_s": decode_time - profiled_time,
             "steps": len(acceptance_lengths),
         }
-    return output_tokens, metrics
+    yield DFlashRuntimeEvent(
+        token_ids=[],
+        output_tokens=list(output_tokens),
+        metrics=metrics,
+        finished=True,
+    )
+
+
+def dflash_generate(
+    target: LoadedTargetModel,
+    draft: DFlashDraftModel,
+    prompt_tokens: mx.array,
+    max_new_tokens: int,
+    temperature: float,
+    stop_token_ids: set[int],
+    layer_ids: list[int],
+    speculative_tokens: int | None,
+    verify_mode: str,
+    verify_chunk_size: int,
+    profile: bool = False,
+) -> tuple[list[int], dict[str, Any]]:
+    final_event: DFlashRuntimeEvent | None = None
+    for event in dflash_generate_stream(
+        target=target,
+        draft=draft,
+        prompt_tokens=prompt_tokens,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        stop_token_ids=stop_token_ids,
+        layer_ids=layer_ids,
+        speculative_tokens=speculative_tokens,
+        verify_mode=verify_mode,
+        verify_chunk_size=verify_chunk_size,
+        profile=profile,
+    ):
+        if event.finished:
+            final_event = event
+    if final_event is None or final_event.metrics is None:
+        raise RuntimeError("DFlash generation did not produce a final event.")
+    return final_event.output_tokens, final_event.metrics
