@@ -26,6 +26,29 @@ result = runner.generate("Write a quicksort in Python.", max_new_tokens=128)
 print(result.text)
 ```
 
+## OpenAI-compatible local server
+
+A minimal text-only, non-streaming OpenAI-compatible HTTP server is included for local integrations:
+
+```bash
+dflash-mlx-openai-server \
+  --host 127.0.0.1 \
+  --port 8098 \
+  --model-id qwen35-27b-dflash \
+  --target-model /path/to/target \
+  --draft-model /path/to/draft
+```
+
+Endpoints:
+- `GET /health`
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+
+Current limitations:
+- text-only message content
+- no image input
+- no streaming responses yet
+
 ## Supported models
 
 | Target | Draft |
