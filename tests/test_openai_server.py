@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 
 def test_server_module_importable_and_has_main():
     from dflash_mlx import openai_server
@@ -68,6 +66,31 @@ def test_build_chat_response_has_openai_shape():
         "prompt_tokens": 12,
         "completion_tokens": 4,
         "total_tokens": 16,
+    }
+
+
+def test_build_chat_stream_chunk_has_openai_shape():
+    from dflash_mlx.openai_server import build_chat_stream_chunk
+
+    payload = build_chat_stream_chunk(
+        chunk_id="chatcmpl-test",
+        created=123,
+        model="local/qwen-dflash",
+        delta={"content": "Hel"},
+    )
+
+    assert payload == {
+        "id": "chatcmpl-test",
+        "object": "chat.completion.chunk",
+        "created": 123,
+        "model": "local/qwen-dflash",
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"content": "Hel"},
+                "finish_reason": None,
+            }
+        ],
     }
 
 

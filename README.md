@@ -24,11 +24,18 @@ from dflash_mlx import DFlashGenerator
 runner = DFlashGenerator()
 result = runner.generate("Write a quicksort in Python.", max_new_tokens=128)
 print(result.text)
+
+for event in runner.stream("Write a quicksort in Python.", max_new_tokens=128):
+    if not event.finished:
+        print(event.delta, end="", flush=True)
 ```
+
+Use `uv run dflash-mlx --stream` or `uv run dflash-mlx-chat --stream` to print
+verified text as it is committed.
 
 ## OpenAI-compatible local server
 
-A minimal text-only, non-streaming OpenAI-compatible HTTP server is included for local integrations:
+A minimal text-only OpenAI-compatible HTTP server is included for local integrations:
 
 ```bash
 dflash-mlx-openai-server \
@@ -47,7 +54,9 @@ Endpoints:
 Current limitations:
 - text-only message content
 - no image input
-- no streaming responses yet
+
+`POST /v1/chat/completions` supports both full responses and streaming SSE chunks
+with `"stream": true`.
 
 ## Supported models
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from huggingface_hub.utils import disable_progress_bars
 
-from .api import DEFAULT_DRAFT_MODEL, DEFAULT_TARGET_MODEL, DFlashGenerator
+from .api import DEFAULT_DRAFT_MODEL, DEFAULT_TARGET_MODEL, DFlashGenerator, DFlashResult
 from .history import (
     DEFAULT_HISTORY_PATH,
     append_rows,
@@ -113,6 +113,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--print-output", action="store_true")
     parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Print generated text as soon as verified tokens are committed.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print a single JSON result object and suppress progress logs.",
@@ -149,6 +154,8 @@ def main() -> None:
     args = parse_args()
     if args.prompt is not None and args.prompt_file is not None:
         raise SystemExit("Use either --prompt or --prompt-file, not both.")
+    if args.json and args.stream:
+        raise SystemExit("Use either --json or --stream, not both.")
     if args.json:
         disable_progress_bars()
     log = (lambda *items: None) if args.json else print
@@ -228,15 +235,42 @@ def main() -> None:
             f"accept={warm_result.metrics['avg_acceptance_length']:.2f}"
         )
 
-    result = runner.generate_from_tokens(
-        prompt_tokens=prompt_tokens,
-        max_new_tokens=args.max_new_tokens,
-        temperature=args.temperature,
-        speculative_tokens=args.speculative_tokens,
-        verify_mode=args.verify_mode,
-        verify_chunk_size=args.verify_chunk_size,
-        profile=args.profile,
-    )
+    if args.stream:
+        final_event = None
+        for event in runner.stream_from_tokens(
+            prompt_tokens=prompt_tokens,
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+            speculative_tokens=args.speculative_tokens,
+            verify_mode=args.verify_mode,
+            verify_chunk_size=args.verify_chunk_size,
+            profile=args.profile,
+        ):
+            if event.finished:
+                if event.delta:
+                    print(event.delta, end="", flush=True)
+                final_event = event
+            elif event.delta:
+                print(event.delta, end="", flush=True)
+        print()
+        if final_event is None or final_event.metrics is None:
+            raise RuntimeError("Streaming generation did not produce a final event.")
+        result = DFlashResult(
+            text=final_event.text,
+            output_tokens=final_event.output_tokens,
+            generated_tokens=final_event.generated_tokens,
+            metrics=final_event.metrics,
+        )
+    else:
+        result = runner.generate_from_tokens(
+            prompt_tokens=prompt_tokens,
+            max_new_tokens=args.max_new_tokens,
+            temperature=args.temperature,
+            speculative_tokens=args.speculative_tokens,
+            verify_mode=args.verify_mode,
+            verify_chunk_size=args.verify_chunk_size,
+            profile=args.profile,
+        )
     metrics = result.metrics
 
     log("\n" + "=" * 60)
@@ -316,7 +350,7 @@ def main() -> None:
 
     if args.json:
         print(json.dumps(result_payload, indent=2, sort_keys=True))
-    elif args.print_output:
+    elif args.print_output and not args.stream:
         print(result.text)
 
 
